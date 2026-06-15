@@ -147,5 +147,61 @@ For each milestone:
 
 - Run `npm install` if dependencies changed.
 - Run `npm run build`.
-- Run `cargo check` inside `src-tauri` when Rust code changed.
+- Run `npm run check` before release or when packaging scripts/docs change.
+- Run `cargo check` inside `src-tauri` when Rust code changed, or when confirming release readiness.
+- Run `cargo fmt -- --check` inside `src-tauri` before committing Rust-facing changes.
 - Commit only after the app builds or clearly document why verification is blocked.
+
+## Release and Packaging Flow
+
+DayNote releases are built as native desktop artifacts. Users install those artifacts directly and do not need Rust, Node.js, npm, or the source tree.
+
+1. Confirm the worktree and version inputs.
+   - Inspect `git status --short` and keep unrelated user changes intact.
+   - Keep `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` versions aligned when cutting a real release.
+   - Review `src-tauri/tauri.conf.json` bundle targets. DayNote currently uses `"targets": "all"`.
+
+2. Install dependencies when needed.
+   - Run `npm install` after dependency or lockfile changes.
+   - Do not add new runtime dependencies for packaging docs or helper scripts.
+
+3. Run verification.
+   - `npm run build`
+   - `npm run check`
+   - `cd src-tauri && cargo check`
+   - `cd src-tauri && cargo fmt -- --check`
+
+4. Package on the target host.
+   - Windows: `npm run bundle` from the repository root, or `.\scripts\Package-Windows.ps1 -Bundle`.
+   - macOS: run the same package command on macOS or macOS CI. Public distribution normally needs signing/notarization configured outside this milestone.
+   - Linux: run the package command on the Linux distro or Linux CI image that matches the intended artifact family.
+
+5. Inspect artifacts.
+   - Windows MSI: `src-tauri/target/release/bundle/msi/`.
+   - Windows NSIS setup exe: `src-tauri/target/release/bundle/nsis/`.
+   - macOS/Linux outputs are under the matching `src-tauri/target/release/bundle/` subdirectories produced by Tauri on those hosts.
+
+6. Smoke test the packaged app.
+   - Install or launch the artifact on a clean-ish user profile when possible.
+   - Confirm the global shortcut toggles the panel.
+   - Add, complete, delete, prioritize, reorder, and navigate dates.
+   - Close the window and confirm tray/menu-bar show/hide and quit behavior.
+   - Restart the app and confirm `daynote.json` data persisted.
+
+## Commit and Review Flow
+
+- Keep one milestone or cohesive fix per commit.
+- Use concise conventional commit messages, for example `docs: add release workflow`.
+- Before commit, review `git diff --check` and the staged diff.
+- If another contributor has changed files, integrate with those changes instead of reverting them.
+- Review should focus on behavior risk, data safety, packaging correctness, and missing verification.
+- Documentation-only packaging changes should not modify core app behavior.
+
+## Lightweight Boundaries
+
+- The app remains local-first and offline-first.
+- No telemetry, remote fonts, remote assets, or network service dependency.
+- No background timers or continuous animation loops unless a future feature strictly requires them.
+- Packaging helpers must be readable, non-destructive, and avoid cleaning build directories or deleting user data.
+- Prefer native Tauri and standard toolchain commands over new project dependencies.
+- Keep release docs practical: commands, artifact paths, platform limits, and smoke checks matter more than process ceremony.
