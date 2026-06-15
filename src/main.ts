@@ -650,7 +650,6 @@ function markTaskAsAdded(taskId: string) {
   recentlyAddedTaskId = taskId;
   addFeedbackTimer = window.setTimeout(() => {
     clearAddedFeedback();
-    render();
   }, 520);
 }
 
@@ -662,7 +661,6 @@ function markTaskAsCompleted(taskId: string) {
   recentlyCompletedTaskId = taskId;
   completeFeedbackTimer = window.setTimeout(() => {
     clearCompletedFeedback();
-    render();
   }, 720);
 }
 
@@ -671,8 +669,17 @@ function clearAddedFeedback() {
     window.clearTimeout(addFeedbackTimer);
   }
 
+  const taskId = recentlyAddedTaskId;
   recentlyAddedTaskId = null;
   addFeedbackTimer = null;
+
+  if (!taskId) {
+    return;
+  }
+
+  taskListElement
+    .querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`)
+    ?.classList.remove("is-new");
 }
 
 function clearCompletedFeedback() {
@@ -680,8 +687,22 @@ function clearCompletedFeedback() {
     window.clearTimeout(completeFeedbackTimer);
   }
 
+  const taskId = recentlyCompletedTaskId;
   recentlyCompletedTaskId = null;
   completeFeedbackTimer = null;
+
+  if (!taskId) {
+    return;
+  }
+
+  const taskItem = taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
+
+  if (!taskItem) {
+    return;
+  }
+
+  taskItem.classList.remove("is-completing");
+  taskItem.querySelector<HTMLElement>(".task-sheen")?.remove();
 }
 
 function getRecordedAllDoneState() {
@@ -715,7 +736,7 @@ function triggerAllDoneReward() {
   noteShellElement.classList.remove("is-rewarding");
   void noteShellElement.offsetWidth;
   noteShellElement.classList.add("is-rewarding");
-  setStatus("今日清单已全部完成");
+  setStatus(formatAllDoneRewardStatus());
 
   rewardTimer = window.setTimeout(() => {
     hideAllDoneReward();
@@ -737,7 +758,7 @@ function createRewardPieces() {
   const pieces: HTMLElement[] = [];
   const seal = document.createElement("div");
   seal.className = "reward-seal";
-  seal.textContent = "今日已清";
+  seal.textContent = formatAllDoneRewardSeal();
   pieces.push(seal);
 
   for (let index = 0; index < 10; index += 1) {
@@ -750,6 +771,18 @@ function createRewardPieces() {
   }
 
   return pieces;
+}
+
+function formatAllDoneRewardStatus() {
+  const relativeLabel = getRelativeDateLabel(viewedDate);
+
+  return relativeLabel ? `${relativeLabel}清单已全部完成` : "当前清单已全部完成";
+}
+
+function formatAllDoneRewardSeal() {
+  const relativeLabel = getRelativeDateLabel(viewedDate);
+
+  return relativeLabel ? `${relativeLabel}已清` : "当前已清";
 }
 
 function getViewedTasks() {

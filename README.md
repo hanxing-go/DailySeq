@@ -71,4 +71,4 @@ npm run tauri:build
 
 - The fixed theme uses a warm paper-like surface with jade accents and restrained cinnabar / gold highlights.
 - Adding a task gives a brief entry highlight, and completing a task gives a short check bounce plus a light sheen.
-- When the current day reaches all done for the first time, DayNote shows a one-shot stamp-and-spark reward above the list. Switching dates does not retrigger it unless that date transitions from not-complete to complete again.
+- When the viewed day reaches all done for the first time, DayNote shows a one-shot stamp-and-spark reward above the list using the current date label. The add / complete feedback clears in place so keyboard focus stays on the same task.
