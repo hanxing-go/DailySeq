@@ -381,7 +381,7 @@ async function toggleTask(taskId: string | null) {
   }
   render();
   const shouldReward = recordAllDoneTransition(wasAllDone);
-  const saved = await persist(shouldReward ? "今日清单已全部完成" : task.done ? "已完成" : "已恢复");
+  const saved = await persist(shouldReward ? formatAllDoneSaveStatus() : task.done ? "已完成" : "已恢复");
   if (saved && shouldReward) {
     triggerAllDoneReward();
   }
@@ -783,6 +783,20 @@ function formatAllDoneRewardSeal() {
   const relativeLabel = getRelativeDateLabel(viewedDate);
 
   return relativeLabel ? `${relativeLabel}已清` : "当前已清";
+}
+
+function formatAllDoneSaveStatus() {
+  const relativeLabel = getRelativeDateLabel(viewedDate);
+
+  if (relativeLabel === "今天") {
+    return "当前清单已全部完成";
+  }
+
+  if (relativeLabel) {
+    return `${relativeLabel}清单已全部完成`;
+  }
+
+  return `${formatCalendarDate(viewedDate)}清单已全部完成`;
 }
 
 function getViewedTasks() {
