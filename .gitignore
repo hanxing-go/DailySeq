@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-ssr/
+.vite/
+
+src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock
+
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+.env
+.env.*
+!.env.example
