@@ -7,6 +7,7 @@ type DropPosition = "before" | "after";
 
 const DEFAULT_IMPORTANCE: Importance = "medium";
 const LOCALE = "zh-CN";
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
@@ -36,10 +37,10 @@ interface DaynoteData {
 }
 
 const appWindow = getCurrentWindow();
-const today = new Date();
-const todayKey = toIsoDate(today);
 
 let data: DaynoteData = createEmptyData();
+let viewedDate = startOfLocalDay(new Date());
+let viewedDateKey = toIsoDate(viewedDate);
 let focusedTaskId: string | null = null;
 let isSaving = false;
 let isLoadBlocked = false;
@@ -49,11 +50,15 @@ let dropPosition: DropPosition = "before";
 
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
+const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
+const nextDayButtonElement = requireElement<HTMLButtonElement>("#next-day");
 const composerElement = requireElement<HTMLFormElement>("#composer");
 const taskInputElement = requireElement<HTMLInputElement>("#task-input");
 const addTaskButtonElement = requireElement<HTMLButtonElement>("#add-task");
 const statusMessageElement = requireElement<HTMLParagraphElement>("#status-message");
 const emptyStateElement = requireElement<HTMLElement>("#empty-state");
+const emptyStateTitleElement = requireElement<HTMLParagraphElement>("#empty-state-title");
+const emptyStateDetailElement = requireElement<HTMLElement>("#empty-state-detail");
 const taskListElement = requireElement<HTMLUListElement>("#task-list");
 
 document.querySelectorAll<HTMLElement>("[data-tauri-drag-region]").forEach((item) => {
@@ -81,6 +86,23 @@ taskInputElement.addEventListener("keydown", (event) => {
     event.preventDefault();
     void addTask();
   }
+});
+
+previousDayButtonElement.addEventListener("click", () => {
+  navigateDay(-1);
+});
+
+nextDayButtonElement.addEventListener("click", () => {
+  navigateDay(1);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!isDayNavigationShortcut(event) || isTextEntryElement(document.activeElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  navigateDay(event.key === "ArrowLeft" ? -1 : 1);
 });
 
 taskListElement.addEventListener("click", (event) => {
@@ -253,21 +275,19 @@ taskListElement.addEventListener("dragend", () => {
   clearDragState();
 });
 
-setTodayHeader(today);
+renderDateHeader();
 void initialize();
 
 async function initialize() {
-  setStatus("正在读取今天的计划...");
+  setStatus("正在读取计划...");
   updateBusyState();
 
   try {
     data = repairData(await invoke<DaynoteData>("load_daynote_data"));
-    ensureTodayPlan();
     isLoadBlocked = false;
     setStatus("");
   } catch (error) {
     data = createEmptyData();
-    ensureTodayPlan();
     isLoadBlocked = true;
     taskInputElement.value = "";
     setStatus(
@@ -291,7 +311,7 @@ async function addTask() {
     return;
   }
 
-  const tasks = getTodayTasks();
+  const tasks = getMutableViewedTasks();
   const task: Task = {
     id: createTaskId(),
     text,
@@ -352,7 +372,7 @@ async function deleteTask(taskId: string | null) {
     return;
   }
 
-  const tasks = getTodayTasks();
+  const tasks = getViewedTasks();
   const index = tasks.findIndex((task) => task.id === taskId);
 
   if (index === -1) {
@@ -394,10 +414,14 @@ async function persist(successMessage: string) {
 }
 
 function render() {
-  const tasks = getTodayTasks();
+  renderDateHeader();
+  renderEmptyState();
+
+  const tasks = getViewedTasks();
 
   emptyStateElement.hidden = tasks.length > 0;
   taskListElement.hidden = tasks.length === 0;
+  taskListElement.setAttribute("aria-label", `${formatReadableViewedDate()}的计划`);
   taskListElement.replaceChildren(...tasks.map(renderTask));
 }
 
@@ -470,14 +494,58 @@ function renderTask(task: Task) {
   return item;
 }
 
-function setTodayHeader(date: Date) {
-  weekdayElement.textContent = new Intl.DateTimeFormat(LOCALE, {
-    weekday: "long",
-  }).format(date);
-  dateTitleElement.textContent = new Intl.DateTimeFormat(LOCALE, {
-    month: "numeric",
-    day: "numeric",
-  }).format(date);
+function navigateDay(dayOffset: number) {
+  if (isSaving) {
+    return;
+  }
+
+  viewedDate = addDays(viewedDate, dayOffset);
+  viewedDateKey = toIsoDate(viewedDate);
+  focusedTaskId = null;
+  if (!isLoadBlocked) {
+    setStatus("");
+  }
+  clearDragState();
+  updateBusyState();
+  render();
+}
+
+function renderDateHeader() {
+  const relativeLabel = getRelativeDateLabel(viewedDate);
+  const dateLabel = formatCalendarDate(viewedDate);
+
+  weekdayElement.textContent = formatWeekday(viewedDate);
+  dateTitleElement.textContent = relativeLabel ? `${relativeLabel} · ${dateLabel}` : dateLabel;
+}
+
+function renderEmptyState() {
+  const dayOffset = getDayOffset(viewedDate);
+
+  if (isLoadBlocked) {
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
+    emptyStateDetailElement.textContent = "读取失败后，DayNote 不会保存新内容。";
+    emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
+    return;
+  }
+
+  if (dayOffset === 0) {
+    emptyStateTitleElement.textContent = "今天还很安静。";
+    emptyStateDetailElement.textContent = "输入一条计划后，这里会成为你的轻量清单。";
+  } else if (dayOffset === 1) {
+    emptyStateTitleElement.textContent = "明天还没有安排。";
+    emptyStateDetailElement.textContent = "可以先放下一条轻量计划。";
+  } else if (dayOffset === -1) {
+    emptyStateTitleElement.textContent = "昨天没有留下计划。";
+    emptyStateDetailElement.textContent = "需要回看或补记时，可以在这里添加。";
+  } else if (dayOffset > 0) {
+    emptyStateTitleElement.textContent = "这一天还没有安排。";
+    emptyStateDetailElement.textContent = "提前写下要做的事，到了当天就不用重新想。";
+  } else {
+    emptyStateTitleElement.textContent = "这一天没有留下计划。";
+    emptyStateDetailElement.textContent = "需要回看或补记时，可以在这里添加。";
+  }
+
+  emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
 }
 
 function updateBusyState() {
@@ -486,8 +554,10 @@ function updateBusyState() {
   taskInputElement.disabled = locked;
   taskInputElement.placeholder = isLoadBlocked
     ? LOAD_BLOCKED_PLACEHOLDER
-    : "写下一件今天要完成的小事";
+    : getInputPlaceholder();
   addTaskButtonElement.disabled = locked;
+  previousDayButtonElement.disabled = isSaving;
+  nextDayButtonElement.disabled = isSaving;
   composerElement.toggleAttribute("aria-disabled", locked);
   taskListElement.toggleAttribute("aria-busy", isSaving);
   taskListElement.setAttribute("aria-disabled", String(locked));
@@ -498,18 +568,19 @@ function setStatus(message: string, isError = false) {
   statusMessageElement.classList.toggle("is-error", isError);
 }
 
-function ensureTodayPlan() {
-  const dayPlan = (data.days[todayKey] ??= { tasks: [] });
-  dayPlan.tasks = repairTasks(dayPlan.tasks ?? []);
+function getViewedTasks() {
+  return data.days[viewedDateKey]?.tasks ?? [];
 }
 
-function getTodayTasks() {
-  ensureTodayPlan();
-  return data.days[todayKey].tasks;
+function getMutableViewedTasks() {
+  const dayPlan = (data.days[viewedDateKey] ??= { tasks: [] });
+  dayPlan.tasks = repairTasks(dayPlan.tasks ?? []);
+
+  return dayPlan.tasks;
 }
 
 function findTask(taskId: string) {
-  return getTodayTasks().find((task) => task.id === taskId);
+  return getViewedTasks().find((task) => task.id === taskId);
 }
 
 function repairData(value: DaynoteData | null | undefined): DaynoteData {
@@ -570,7 +641,7 @@ function normalizeOrder(value: unknown, fallback: number) {
 }
 
 function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosition) {
-  const tasks = getTodayTasks();
+  const tasks = getViewedTasks();
   const fromIndex = tasks.findIndex((task) => task.id === sourceTaskId);
   const targetIndex = tasks.findIndex((task) => task.id === targetTaskId);
 
@@ -629,6 +700,87 @@ function toIsoDate(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, dayOffset: number) {
+  const nextDate = startOfLocalDay(date);
+  nextDate.setDate(nextDate.getDate() + dayOffset);
+
+  return nextDate;
+}
+
+function getDayOffset(date: Date) {
+  return Math.round((startOfLocalDay(date).getTime() - startOfLocalDay(new Date()).getTime()) / DAY_IN_MS);
+}
+
+function getRelativeDateLabel(date: Date) {
+  const dayOffset = getDayOffset(date);
+
+  if (dayOffset === 0) {
+    return "今天";
+  }
+
+  if (dayOffset === 1) {
+    return "明天";
+  }
+
+  if (dayOffset === -1) {
+    return "昨天";
+  }
+
+  return null;
+}
+
+function formatCalendarDate(date: Date) {
+  const options: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+  };
+
+  if (date.getFullYear() !== new Date().getFullYear()) {
+    options.year = "numeric";
+  }
+
+  return new Intl.DateTimeFormat(LOCALE, options).format(date);
+}
+
+function formatWeekday(date: Date) {
+  return new Intl.DateTimeFormat(LOCALE, {
+    weekday: "long",
+  }).format(date);
+}
+
+function formatReadableViewedDate() {
+  const relativeLabel = getRelativeDateLabel(viewedDate);
+  const dateLabel = formatCalendarDate(viewedDate);
+
+  return relativeLabel ? `${relativeLabel} ${dateLabel}` : dateLabel;
+}
+
+function formatShortViewedDate() {
+  return getRelativeDateLabel(viewedDate) ?? "这一天";
+}
+
+function getInputPlaceholder() {
+  const dayOffset = getDayOffset(viewedDate);
+
+  if (dayOffset === 0) {
+    return "写下一件今天要完成的小事";
+  }
+
+  if (dayOffset === 1) {
+    return "写下一件明天要安排的小事";
+  }
+
+  if (dayOffset === -1) {
+    return "补记一件昨天的计划";
+  }
+
+  return dayOffset > 0 ? "安排这一天的计划" : "补记这一天的计划";
 }
 
 function focusTask(taskId: string) {
@@ -705,6 +857,27 @@ function updateDragIndicators() {
 
 function isImportance(value: string | undefined): value is Importance {
   return value === "low" || value === "medium" || value === "high";
+}
+
+function isDayNavigationShortcut(event: KeyboardEvent) {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return false;
+  }
+
+  return event.key === "ArrowLeft" || event.key === "ArrowRight";
+}
+
+function isTextEntryElement(element: Element | null) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    element.isContentEditable ||
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  );
 }
 
 function isPriorityShortcut(key: string) {

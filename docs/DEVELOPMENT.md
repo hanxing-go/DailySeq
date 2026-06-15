@@ -129,6 +129,12 @@ Each milestone must be implemented and committed separately.
 - Do not use remote fonts or remote assets.
 - Commit after every completed milestone.
 
+## Date Navigation Notes
+
+- The main panel always reflects the currently viewed ISO date key, not just today.
+- Viewing an empty past or future day does not create a new saved day until the user edits that day.
+- When load failure protection is active, users can still browse dates and read empty states, but task edits, ordering, and saves remain blocked.
+
 ## Verification
 
 For each milestone:

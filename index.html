@@ -8,14 +8,14 @@
   <body>
     <main id="app" class="note-shell">
       <header class="note-header" data-tauri-drag-region>
-        <button class="icon-button" type="button" aria-label="上一天，稍后支持" disabled>
+        <button id="previous-day" class="icon-button" type="button" aria-label="上一天（Alt+Left）">
           <span aria-hidden="true">‹</span>
         </button>
         <div class="date-stack">
           <span id="weekday" class="weekday">今天</span>
           <h1 id="date-title">DayNote</h1>
         </div>
-        <button class="icon-button" type="button" aria-label="下一天，稍后支持" disabled>
+        <button id="next-day" class="icon-button" type="button" aria-label="下一天（Alt+Right）">
           <span aria-hidden="true">›</span>
         </button>
       </header>
@@ -36,11 +36,11 @@
 
       <section id="empty-state" class="empty-state" aria-label="空计划">
         <div class="empty-mark" aria-hidden="true"></div>
-        <p>今天还很安静。</p>
-        <span>输入一条计划后，这里会成为你的轻量清单。</span>
+        <p id="empty-state-title">今天还很安静。</p>
+        <span id="empty-state-detail">输入一条计划后，这里会成为你的轻量清单。</span>
       </section>
 
-      <ul id="task-list" class="task-list" aria-label="今天的计划"></ul>
+      <ul id="task-list" class="task-list" aria-label="当前日期的计划"></ul>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
