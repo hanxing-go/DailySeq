@@ -34,15 +34,14 @@ The main window is a compact always-on-top note panel, not a full dashboard. It 
 
 ## Default Shortcuts
 
-- `Ctrl+Alt+D`: show or hide DayNote.
+- `Ctrl+Alt+D`: show or hide DayNote on Windows/Linux.
+- `Command+Option+D`: show or hide DayNote on macOS.
 - `Ctrl+Enter`: add the current task.
 - `Alt+Left`: previous day.
 - `Alt+Right`: next day.
 - `Ctrl+1`, `Ctrl+2`, `Ctrl+3`: set selected task importance to low, medium, high.
 - `Space`: toggle selected task completion when the list has focus.
 - `Delete`: remove selected task.
-
-On macOS, `Command+Option+D` should be preferred when platform-specific shortcut registration is added.
 
 ## Data Model
 

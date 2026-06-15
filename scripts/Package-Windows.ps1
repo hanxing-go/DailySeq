@@ -26,6 +26,30 @@ function Invoke-DayNoteStep {
     & $Command
 }
 
+function Invoke-DayNoteNative {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$FilePath,
+
+        [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
+        [string[]]$ArgumentList
+    )
+
+    $CommandInfo = Get-Command $FilePath -ErrorAction Stop
+
+    if ($CommandInfo.CommandType -ne "Application") {
+        throw "Invoke-DayNoteNative expected a native executable: $FilePath"
+    }
+
+    & $CommandInfo.Source @ArgumentList
+    $ExitCode = $LASTEXITCODE
+
+    if ($null -ne $ExitCode -and $ExitCode -ne 0) {
+        $DisplayCommand = ($FilePath, $ArgumentList) -join " "
+        throw "Native command failed with exit code ${ExitCode}: $DisplayCommand"
+    }
+}
+
 Push-Location $RepoRoot
 try {
     if (-not (Test-Path "node_modules")) {
@@ -33,18 +57,18 @@ try {
     }
 
     Invoke-DayNoteStep "Toolchain" {
-        node --version
-        npm --version
-        cargo --version
+        Invoke-DayNoteNative node --version
+        Invoke-DayNoteNative npm.cmd --version
+        Invoke-DayNoteNative cargo --version
     }
 
     Invoke-DayNoteStep "Verification" {
-        npm run check
+        Invoke-DayNoteNative npm.cmd run check
     }
 
     if ($Bundle) {
         Invoke-DayNoteStep "Windows bundle" {
-            npm run bundle
+            Invoke-DayNoteNative npm.cmd run bundle
         }
 
         Invoke-DayNoteStep "Installer outputs" {
