@@ -46,6 +46,8 @@ npm run tauri:build
 ## Daily TODO Storage
 
 - Plans are persisted as JSON in the Tauri app data directory, under `daynote.json`.
+- Saves write a synced temporary file in the same directory before replacing `daynote.json`, so the existing data file is not truncated before the new JSON is complete.
+- If DayNote cannot load or parse the existing data file, the UI blocks editing and saving with a Chinese error message instead of overwriting the file with empty or new data.
 - Tasks are stored under the current local ISO date in the `days` map.
 - New tasks use `importance: "medium"` until importance controls are added in a later milestone.
 - The current UI supports today's list only: add, toggle complete, and delete. Previous/next day buttons are visible placeholders for the date navigation milestone.

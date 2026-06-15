@@ -4,6 +4,7 @@ import "./styles.css";
 
 const DEFAULT_IMPORTANCE = "medium";
 const LOCALE = "zh-CN";
+const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 
 type Importance = "low" | "medium" | "high";
 
@@ -35,6 +36,7 @@ const todayKey = toIsoDate(today);
 let data: DaynoteData = createEmptyData();
 let focusedTaskId: string | null = null;
 let isSaving = false;
+let isLoadBlocked = false;
 
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
@@ -140,25 +142,35 @@ void initialize();
 
 async function initialize() {
   setStatus("正在读取今天的计划...");
+  updateBusyState();
 
   try {
     data = repairData(await invoke<DaynoteData>("load_daynote_data"));
     ensureTodayPlan();
+    isLoadBlocked = false;
     setStatus("");
   } catch (error) {
     data = createEmptyData();
     ensureTodayPlan();
-    setStatus(`读取失败：${formatError(error)}`, true);
+    isLoadBlocked = true;
+    taskInputElement.value = "";
+    setStatus(
+      `读取失败：${formatError(error)}。为避免覆盖已有数据，DayNote 已暂时阻止编辑和保存。请重启应用，或检查应用数据目录中的 daynote.json。`,
+      true,
+    );
   }
 
+  updateBusyState();
   render();
-  taskInputElement.focus();
+  if (!isLoadBlocked) {
+    taskInputElement.focus();
+  }
 }
 
 async function addTask() {
   const text = taskInputElement.value.trim();
 
-  if (!text || isSaving) {
+  if (isLoadBlocked || !text || isSaving) {
     return;
   }
 
@@ -182,7 +194,7 @@ async function addTask() {
 }
 
 async function toggleTask(taskId: string | undefined) {
-  if (!taskId || isSaving) {
+  if (isLoadBlocked || !taskId || isSaving) {
     return;
   }
 
@@ -201,7 +213,7 @@ async function toggleTask(taskId: string | undefined) {
 }
 
 async function deleteTask(taskId: string | undefined) {
-  if (!taskId || isSaving) {
+  if (isLoadBlocked || !taskId || isSaving) {
     return;
   }
 
@@ -226,6 +238,10 @@ async function deleteTask(taskId: string | undefined) {
 }
 
 async function persist(successMessage: string) {
+  if (isLoadBlocked) {
+    return;
+  }
+
   isSaving = true;
   updateBusyState();
   setStatus("正在保存...");
@@ -260,6 +276,7 @@ function renderTask(task: Task) {
   const toggleButton = document.createElement("button");
   toggleButton.className = "task-toggle";
   toggleButton.type = "button";
+  toggleButton.disabled = isLoadBlocked;
   toggleButton.dataset.action = "toggle";
   toggleButton.setAttribute("aria-label", task.done ? `标记为未完成：${task.text}` : `标记为完成：${task.text}`);
   toggleButton.setAttribute("aria-pressed", String(task.done));
@@ -271,6 +288,7 @@ function renderTask(task: Task) {
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
   deleteButton.type = "button";
+  deleteButton.disabled = isLoadBlocked;
   deleteButton.dataset.action = "delete";
   deleteButton.setAttribute("aria-label", `删除计划：${task.text}`);
   deleteButton.textContent = "×";
@@ -291,7 +309,12 @@ function setTodayHeader(date: Date) {
 }
 
 function updateBusyState() {
-  addTaskButtonElement.disabled = isSaving;
+  taskInputElement.disabled = isLoadBlocked || isSaving;
+  taskInputElement.placeholder = isLoadBlocked
+    ? LOAD_BLOCKED_PLACEHOLDER
+    : "写下一件今天要完成的小事";
+  addTaskButtonElement.disabled = isLoadBlocked || isSaving;
+  composerElement.toggleAttribute("aria-disabled", isLoadBlocked);
   taskListElement.toggleAttribute("aria-busy", isSaving);
 }
 

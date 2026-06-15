@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, OpenOptions};
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
@@ -185,10 +187,151 @@ fn save_daynote_data(app: AppHandle<Wry>, data: DaynoteData) -> Result<DaynoteDa
     let contents = serde_json::to_string_pretty(&repaired)
         .map_err(|error| format!("failed to serialize DayNote data: {error}"))?;
 
-    fs::write(&path, contents)
-        .map_err(|error| format!("failed to write DayNote data file: {error}"))?;
+    let temp_path = write_synced_temp_file(&path, contents.as_bytes())?;
+    replace_data_file(&temp_path, &path)?;
 
     Ok(repaired)
+}
+
+fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf, String> {
+    let parent = target_path
+        .parent()
+        .ok_or_else(|| "failed to resolve DayNote data directory".to_string())?;
+    let file_name = target_path
+        .file_name()
+        .ok_or_else(|| "failed to resolve DayNote data file name".to_string())?
+        .to_string_lossy();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+
+    for attempt in 0..100 {
+        let temp_path = parent.join(format!(
+            ".{file_name}.tmp-{}-{timestamp}-{attempt}",
+            std::process::id()
+        ));
+        let mut file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "failed to create temporary DayNote data file: {error}"
+                ))
+            }
+        };
+
+        let write_result = file
+            .write_all(contents)
+            .and_then(|()| file.flush())
+            .and_then(|()| file.sync_all())
+            .map_err(|error| format!("failed to write temporary DayNote data file: {error}"));
+        drop(file);
+
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+
+        return Ok(temp_path);
+    }
+
+    Err("failed to create a unique temporary DayNote data file".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn replace_data_file(temp_path: &Path, target_path: &Path) -> Result<(), String> {
+    fs::rename(temp_path, target_path)
+        .map_err(|error| format!("failed to replace DayNote data file: {error}"))
+}
+
+#[cfg(target_os = "windows")]
+fn replace_data_file(temp_path: &Path, target_path: &Path) -> Result<(), String> {
+    if !target_path
+        .try_exists()
+        .map_err(|error| format!("failed to inspect DayNote data file: {error}"))?
+    {
+        return fs::rename(temp_path, target_path)
+            .map_err(|error| format!("failed to install DayNote data file: {error}"));
+    }
+
+    let backup_path = backup_path_for(target_path)?;
+
+    if backup_path
+        .try_exists()
+        .map_err(|error| format!("failed to inspect DayNote data backup: {error}"))?
+    {
+        fs::remove_file(&backup_path)
+            .map_err(|error| format!("failed to remove previous DayNote data backup: {error}"))?;
+    }
+
+    replace_existing_file_windows(target_path, temp_path, &backup_path)
+}
+
+#[cfg(target_os = "windows")]
+fn backup_path_for(target_path: &Path) -> Result<PathBuf, String> {
+    let mut backup_name = target_path
+        .file_name()
+        .ok_or_else(|| "failed to resolve DayNote data backup name".to_string())?
+        .to_os_string();
+    backup_name.push(".bak");
+
+    Ok(target_path.with_file_name(backup_name))
+}
+
+#[cfg(target_os = "windows")]
+fn replace_existing_file_windows(
+    target_path: &Path,
+    temp_path: &Path,
+    backup_path: &Path,
+) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr::null_mut;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        #[link_name = "ReplaceFileW"]
+        fn replace_file_w(
+            replaced_file_name: *const u16,
+            replacement_file_name: *const u16,
+            backup_file_name: *const u16,
+            replace_flags: u32,
+            exclude: *mut core::ffi::c_void,
+            reserved: *mut core::ffi::c_void,
+        ) -> i32;
+    }
+
+    fn wide_path(path: &Path) -> Vec<u16> {
+        path.as_os_str().encode_wide().chain(Some(0)).collect()
+    }
+
+    let target_wide = wide_path(target_path);
+    let temp_wide = wide_path(temp_path);
+    let backup_wide = wide_path(backup_path);
+
+    let succeeded = unsafe {
+        replace_file_w(
+            target_wide.as_ptr(),
+            temp_wide.as_ptr(),
+            backup_wide.as_ptr(),
+            0,
+            null_mut(),
+            null_mut(),
+        )
+    };
+
+    if succeeded == 0 {
+        return Err(format!(
+            "failed to replace DayNote data file: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    Ok(())
 }
 
 fn storage_path(app: &AppHandle<Wry>) -> Result<PathBuf, String> {
