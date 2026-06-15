@@ -1,3 +1,7 @@
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::PathBuf;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
@@ -6,10 +10,119 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_SHOW_HIDE_ID: &str = "show_hide";
 const TRAY_QUIT_ID: &str = "quit";
+const STORAGE_FILE_NAME: &str = "daynote.json";
+const DEFAULT_THEME: &str = "jade";
+const DEFAULT_IMPORTANCE: &str = "medium";
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DaynoteData {
+    #[serde(default)]
+    days: BTreeMap<String, DayPlan>,
+    #[serde(default)]
+    settings: Settings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+struct DayPlan {
+    #[serde(default)]
+    tasks: Vec<Task>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Task {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    text: String,
+    #[serde(default = "default_importance")]
+    importance: String,
+    #[serde(default)]
+    done: bool,
+    #[serde(default = "default_timestamp")]
+    created_at: String,
+    #[serde(default)]
+    completed_at: Option<String>,
+    #[serde(default)]
+    order: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct Settings {
+    #[serde(default = "default_theme")]
+    theme: String,
+}
+
+impl Default for DaynoteData {
+    fn default() -> Self {
+        Self {
+            days: BTreeMap::new(),
+            settings: Settings::default(),
+        }
+    }
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            theme: DEFAULT_THEME.to_string(),
+        }
+    }
+}
+
+impl DaynoteData {
+    fn repaired(mut self) -> Self {
+        if self.settings.theme.trim().is_empty() {
+            self.settings.theme = DEFAULT_THEME.to_string();
+        }
+
+        for (date, day) in self.days.iter_mut() {
+            for (index, task) in day.tasks.iter_mut().enumerate() {
+                task.id = task.id.trim().to_string();
+                task.text = task.text.trim().to_string();
+
+                if task.id.is_empty() && !task.text.is_empty() {
+                    task.id = format!("repaired-{date}-{index}");
+                }
+
+                if task.importance.trim().is_empty() {
+                    task.importance = DEFAULT_IMPORTANCE.to_string();
+                }
+
+                if !matches!(task.importance.as_str(), "low" | "medium" | "high") {
+                    task.importance = DEFAULT_IMPORTANCE.to_string();
+                }
+
+                if task.created_at.trim().is_empty() {
+                    task.created_at = default_timestamp();
+                }
+
+                if !task.done {
+                    task.completed_at = None;
+                }
+            }
+
+            day.tasks
+                .retain(|task| !task.id.trim().is_empty() && !task.text.is_empty());
+            day.tasks.sort_by_key(|task| task.order);
+
+            for (index, task) in day.tasks.iter_mut().enumerate() {
+                task.order = index as u32;
+            }
+        }
+
+        self
+    }
+}
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            load_daynote_data,
+            save_daynote_data
+        ])
         .setup(|app| {
             build_tray(app.handle())?;
             if let Err(error) = register_global_shortcut(app.handle()) {
@@ -37,6 +150,64 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running DayNote");
+}
+
+#[tauri::command]
+fn load_daynote_data(app: AppHandle<Wry>) -> Result<DaynoteData, String> {
+    let path = storage_path(&app)?;
+
+    if !path.exists() {
+        return Ok(DaynoteData::default());
+    }
+
+    let contents = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read DayNote data file: {error}"))?;
+
+    if contents.trim().is_empty() {
+        return Ok(DaynoteData::default());
+    }
+
+    serde_json::from_str::<DaynoteData>(&contents)
+        .map(DaynoteData::repaired)
+        .map_err(|error| format!("failed to parse DayNote data file: {error}"))
+}
+
+#[tauri::command]
+fn save_daynote_data(app: AppHandle<Wry>, data: DaynoteData) -> Result<DaynoteData, String> {
+    let repaired = data.repaired();
+    let path = storage_path(&app)?;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create DayNote data directory: {error}"))?;
+    }
+
+    let contents = serde_json::to_string_pretty(&repaired)
+        .map_err(|error| format!("failed to serialize DayNote data: {error}"))?;
+
+    fs::write(&path, contents)
+        .map_err(|error| format!("failed to write DayNote data file: {error}"))?;
+
+    Ok(repaired)
+}
+
+fn storage_path(app: &AppHandle<Wry>) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|directory| directory.join(STORAGE_FILE_NAME))
+        .map_err(|error| format!("failed to resolve DayNote data directory: {error}"))
+}
+
+fn default_importance() -> String {
+    DEFAULT_IMPORTANCE.to_string()
+}
+
+fn default_theme() -> String {
+    DEFAULT_THEME.to_string()
+}
+
+fn default_timestamp() -> String {
+    "1970-01-01T00:00:00.000Z".to_string()
 }
 
 fn register_global_shortcut(app: &AppHandle<Wry>) -> tauri::Result<()> {

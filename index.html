@@ -8,32 +8,39 @@
   <body>
     <main id="app" class="note-shell">
       <header class="note-header" data-tauri-drag-region>
-        <button class="icon-button" type="button" aria-label="上一天">
+        <button class="icon-button" type="button" aria-label="上一天，稍后支持" disabled>
           <span aria-hidden="true">‹</span>
         </button>
         <div class="date-stack">
-          <span class="weekday">星期一</span>
-          <h1>6月15日</h1>
+          <span id="weekday" class="weekday">今天</span>
+          <h1 id="date-title">DayNote</h1>
         </div>
-        <button class="icon-button" type="button" aria-label="下一天">
+        <button class="icon-button" type="button" aria-label="下一天，稍后支持" disabled>
           <span aria-hidden="true">›</span>
         </button>
       </header>
 
-      <section class="composer" aria-label="添加计划">
+      <form id="composer" class="composer" aria-label="添加计划">
         <input
+          id="task-input"
           type="text"
           placeholder="写下一件今天要完成的小事"
           aria-label="计划内容"
+          autocomplete="off"
+          maxlength="160"
         />
-        <button type="button">添加</button>
-      </section>
+        <button id="add-task" type="submit">添加</button>
+      </form>
 
-      <section class="empty-state" aria-label="空计划">
+      <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
+
+      <section id="empty-state" class="empty-state" aria-label="空计划">
         <div class="empty-mark" aria-hidden="true"></div>
         <p>今天还很安静。</p>
         <span>输入一条计划后，这里会成为你的轻量清单。</span>
       </section>
+
+      <ul id="task-list" class="task-list" aria-label="今天的计划"></ul>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

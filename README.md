@@ -43,4 +43,10 @@ npm run tauri:build
 - The tray/menu-bar entry supports show/hide and quit.
 - The global shortcut is `Ctrl+Alt+D` on Windows/Linux. On macOS, the Rust registration maps to `Command+Option+D`, matching the platform preference from `docs/DEVELOPMENT.md`.
 
-This milestone intentionally keeps the note content static. Persistence, daily navigation behavior, task actions, and importance controls belong to later milestones.
+## Daily TODO Storage
+
+- Plans are persisted as JSON in the Tauri app data directory, under `daynote.json`.
+- Tasks are stored under the current local ISO date in the `days` map.
+- New tasks use `importance: "medium"` until importance controls are added in a later milestone.
+- The current UI supports today's list only: add, toggle complete, and delete. Previous/next day buttons are visible placeholders for the date navigation milestone.
+- Keyboard support: `Ctrl+Enter` adds the typed task, `Space` toggles a focused task, and `Delete` removes a focused task.

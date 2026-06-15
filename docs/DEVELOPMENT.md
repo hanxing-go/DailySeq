@@ -89,6 +89,8 @@ Each milestone must be implemented and committed separately.
    - Toggle completion.
    - Delete task.
    - Persist by day.
+   - Default new task importance to `medium` until importance controls are implemented.
+   - Store the JSON file as `daynote.json` in the Tauri app data directory.
 
 3. Importance and ordering.
    - Low, medium, high importance.
