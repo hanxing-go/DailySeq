@@ -135,6 +135,12 @@ Each milestone must be implemented and committed separately.
 - Viewing an empty past or future day does not create a new saved day until the user edits that day.
 - When load failure protection is active, users can still browse dates and read empty states, but task edits, ordering, and saves remain blocked.
 
+## UI Polish Notes
+
+- The visual direction is fixed: warm paper surface, jade primary controls, with small cinnabar and gold accents.
+- Task add and completion feedback are short, one-shot transitions only; there are no continuous motion loops.
+- A full-day completion reward appears once when a day transitions from not-all-done to all-done, and it is not retriggered just by revisiting the same completed date.
+
 ## Verification
 
 For each milestone:

@@ -66,3 +66,9 @@ npm run tauri:build
 - The header shows the currently viewed day, including an actual date. Today, tomorrow, and yesterday receive a short natural label.
 - Use the left and right header buttons, or `Alt+Left` / `Alt+Right`, to move by one day.
 - Future planning and past review use the same task operations as today. Empty days are not written into `daynote.json` just because they were viewed; a day is saved only after its tasks are changed.
+
+## UI Polish
+
+- The fixed theme uses a warm paper-like surface with jade accents and restrained cinnabar / gold highlights.
+- Adding a task gives a brief entry highlight, and completing a task gives a short check bounce plus a light sheen.
+- When the current day reaches all done for the first time, DayNote shows a one-shot stamp-and-spark reward above the list. Switching dates does not retrigger it unless that date transitions from not-complete to complete again.

@@ -10,6 +10,18 @@ const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
+const REWARD_SPARKS = [
+  { x: -112, y: -30, delay: 20 },
+  { x: -86, y: 34, delay: 80 },
+  { x: -56, y: -70, delay: 110 },
+  { x: -24, y: 62, delay: 40 },
+  { x: 18, y: -86, delay: 140 },
+  { x: 46, y: 48, delay: 70 },
+  { x: 76, y: -54, delay: 0 },
+  { x: 104, y: 22, delay: 120 },
+  { x: 128, y: -18, delay: 170 },
+  { x: 2, y: -44, delay: 50 },
+] as const;
 const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
   medium: "中",
@@ -49,7 +61,14 @@ let isLoadBlocked = false;
 let draggedTaskId: string | null = null;
 let dropTargetTaskId: string | null = null;
 let dropPosition: DropPosition = "before";
+let recentlyAddedTaskId: string | null = null;
+let recentlyCompletedTaskId: string | null = null;
+let addFeedbackTimer: number | null = null;
+let completeFeedbackTimer: number | null = null;
+let rewardTimer: number | null = null;
+const allDoneStateByDate = new Map<string, boolean>();
 
+const noteShellElement = requireElement<HTMLElement>("#app");
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
@@ -62,6 +81,7 @@ const emptyStateElement = requireElement<HTMLElement>("#empty-state");
 const emptyStateTitleElement = requireElement<HTMLParagraphElement>("#empty-state-title");
 const emptyStateDetailElement = requireElement<HTMLElement>("#empty-state-detail");
 const taskListElement = requireElement<HTMLUListElement>("#task-list");
+const allDoneRewardElement = requireElement<HTMLElement>("#all-done-reward");
 
 document.querySelectorAll<HTMLElement>("[data-tauri-drag-region]").forEach((item) => {
   item.addEventListener("pointerdown", (event) => {
@@ -304,6 +324,7 @@ async function initialize() {
 
   updateBusyState();
   render();
+  recordViewedAllDoneState();
 
   if (!isLoadBlocked) {
     taskInputElement.focus();
@@ -331,6 +352,8 @@ async function addTask() {
   tasks.push(task);
   taskInputElement.value = "";
   focusedTaskId = task.id;
+  markTaskAsAdded(task.id);
+  recordViewedAllDoneState();
   render();
   await persist("已添加");
   focusTask(task.id);
@@ -347,11 +370,21 @@ async function toggleTask(taskId: string | null) {
     return;
   }
 
+  const wasAllDone = getRecordedAllDoneState();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
   focusedTaskId = task.id;
+  if (task.done) {
+    markTaskAsCompleted(task.id);
+  } else if (recentlyCompletedTaskId === task.id) {
+    clearCompletedFeedback();
+  }
   render();
-  await persist(task.done ? "已完成" : "已恢复");
+  const shouldReward = recordAllDoneTransition(wasAllDone);
+  const saved = await persist(shouldReward ? "今日清单已全部完成" : task.done ? "已完成" : "已恢复");
+  if (saved && shouldReward) {
+    triggerAllDoneReward();
+  }
   focusTask(task.id);
 }
 
@@ -385,11 +418,22 @@ async function deleteTask(taskId: string | null) {
     return;
   }
 
+  const wasAllDone = getRecordedAllDoneState();
+  if (recentlyAddedTaskId === taskId) {
+    clearAddedFeedback();
+  }
+  if (recentlyCompletedTaskId === taskId) {
+    clearCompletedFeedback();
+  }
   tasks.splice(index, 1);
   resequenceTasks(tasks);
   focusedTaskId = tasks[Math.min(index, tasks.length - 1)]?.id ?? null;
   render();
-  await persist("已删除");
+  const shouldReward = recordAllDoneTransition(wasAllDone);
+  const saved = await persist(shouldReward ? "剩下的计划都完成了" : "已删除");
+  if (saved && shouldReward) {
+    triggerAllDoneReward();
+  }
 
   if (focusedTaskId) {
     focusTask(focusedTaskId);
@@ -400,7 +444,7 @@ async function deleteTask(taskId: string | null) {
 
 async function persist(successMessage: string) {
   if (isLoading || isLoadBlocked) {
-    return;
+    return false;
   }
 
   isSaving = true;
@@ -410,8 +454,10 @@ async function persist(successMessage: string) {
   try {
     data = repairData(await invoke<DaynoteData>("save_daynote_data", { data }));
     setStatus(successMessage);
+    return true;
   } catch (error) {
     setStatus(`保存失败：${formatError(error)}`, true);
+    return false;
   } finally {
     isSaving = false;
     updateBusyState();
@@ -434,6 +480,12 @@ function render() {
 function renderTask(task: Task) {
   const item = document.createElement("li");
   item.className = `task-item${task.done ? " is-done" : ""}`;
+  if (task.id === recentlyAddedTaskId) {
+    item.classList.add("is-new");
+  }
+  if (task.id === recentlyCompletedTaskId) {
+    item.classList.add("is-completing");
+  }
   item.dataset.taskId = task.id;
   item.dataset.importance = task.importance;
   item.tabIndex = 0;
@@ -497,6 +549,13 @@ function renderTask(task: Task) {
 
   item.append(toggleButton, content, deleteButton);
 
+  if (task.id === recentlyCompletedTaskId) {
+    const sheen = document.createElement("span");
+    sheen.className = "task-sheen";
+    sheen.setAttribute("aria-hidden", "true");
+    item.append(sheen);
+  }
+
   return item;
 }
 
@@ -512,8 +571,10 @@ function navigateDay(dayOffset: number) {
     setStatus("");
   }
   clearDragState();
+  hideAllDoneReward();
   updateBusyState();
   render();
+  recordViewedAllDoneState();
 }
 
 function renderDateHeader() {
@@ -579,6 +640,116 @@ function isEditingLocked() {
 function setStatus(message: string, isError = false) {
   statusMessageElement.textContent = message;
   statusMessageElement.classList.toggle("is-error", isError);
+}
+
+function markTaskAsAdded(taskId: string) {
+  if (addFeedbackTimer !== null) {
+    window.clearTimeout(addFeedbackTimer);
+  }
+
+  recentlyAddedTaskId = taskId;
+  addFeedbackTimer = window.setTimeout(() => {
+    clearAddedFeedback();
+    render();
+  }, 520);
+}
+
+function markTaskAsCompleted(taskId: string) {
+  if (completeFeedbackTimer !== null) {
+    window.clearTimeout(completeFeedbackTimer);
+  }
+
+  recentlyCompletedTaskId = taskId;
+  completeFeedbackTimer = window.setTimeout(() => {
+    clearCompletedFeedback();
+    render();
+  }, 720);
+}
+
+function clearAddedFeedback() {
+  if (addFeedbackTimer !== null) {
+    window.clearTimeout(addFeedbackTimer);
+  }
+
+  recentlyAddedTaskId = null;
+  addFeedbackTimer = null;
+}
+
+function clearCompletedFeedback() {
+  if (completeFeedbackTimer !== null) {
+    window.clearTimeout(completeFeedbackTimer);
+  }
+
+  recentlyCompletedTaskId = null;
+  completeFeedbackTimer = null;
+}
+
+function getRecordedAllDoneState() {
+  return allDoneStateByDate.get(viewedDateKey) ?? isViewedDayAllDone();
+}
+
+function recordViewedAllDoneState() {
+  allDoneStateByDate.set(viewedDateKey, isViewedDayAllDone());
+}
+
+function recordAllDoneTransition(wasAllDone: boolean) {
+  const isAllDone = isViewedDayAllDone();
+  allDoneStateByDate.set(viewedDateKey, isAllDone);
+
+  return !wasAllDone && isAllDone;
+}
+
+function isViewedDayAllDone() {
+  const tasks = getViewedTasks();
+
+  return tasks.length > 0 && tasks.every((task) => task.done);
+}
+
+function triggerAllDoneReward() {
+  if (rewardTimer !== null) {
+    window.clearTimeout(rewardTimer);
+  }
+
+  allDoneRewardElement.replaceChildren(...createRewardPieces());
+  allDoneRewardElement.hidden = false;
+  noteShellElement.classList.remove("is-rewarding");
+  void noteShellElement.offsetWidth;
+  noteShellElement.classList.add("is-rewarding");
+  setStatus("今日清单已全部完成");
+
+  rewardTimer = window.setTimeout(() => {
+    hideAllDoneReward();
+  }, 1350);
+}
+
+function hideAllDoneReward() {
+  if (rewardTimer !== null) {
+    window.clearTimeout(rewardTimer);
+    rewardTimer = null;
+  }
+
+  noteShellElement.classList.remove("is-rewarding");
+  allDoneRewardElement.hidden = true;
+  allDoneRewardElement.replaceChildren();
+}
+
+function createRewardPieces() {
+  const pieces: HTMLElement[] = [];
+  const seal = document.createElement("div");
+  seal.className = "reward-seal";
+  seal.textContent = "今日已清";
+  pieces.push(seal);
+
+  for (let index = 0; index < 10; index += 1) {
+    const spark = document.createElement("span");
+    spark.className = "reward-spark";
+    spark.style.setProperty("--spark-x", `${REWARD_SPARKS[index].x}px`);
+    spark.style.setProperty("--spark-y", `${REWARD_SPARKS[index].y}px`);
+    spark.style.setProperty("--spark-delay", `${REWARD_SPARKS[index].delay}ms`);
+    pieces.push(spark);
+  }
+
+  return pieces;
 }
 
 function getViewedTasks() {
