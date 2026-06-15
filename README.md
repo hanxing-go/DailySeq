@@ -47,6 +47,7 @@ npm run tauri:build
 
 - Plans are persisted as JSON in the Tauri app data directory, under `daynote.json`.
 - Saves write a synced temporary file in the same directory before replacing `daynote.json`, so the existing data file is not truncated before the new JSON is complete.
+- While DayNote is initially loading `daynote.json`, editing and saving are locked so empty in-memory data cannot overwrite the existing file.
 - If DayNote cannot load or parse the existing data file, the UI blocks editing and saving with a Chinese error message instead of overwriting the file with empty or new data.
 - Tasks are stored under local ISO date keys in the `days` map.
 - New tasks use `importance: "medium"` by default.

@@ -8,6 +8,7 @@ type DropPosition = "before" | "after";
 const DEFAULT_IMPORTANCE: Importance = "medium";
 const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
@@ -42,6 +43,7 @@ let data: DaynoteData = createEmptyData();
 let viewedDate = startOfLocalDay(new Date());
 let viewedDateKey = toIsoDate(viewedDate);
 let focusedTaskId: string | null = null;
+let isLoading = true;
 let isSaving = false;
 let isLoadBlocked = false;
 let draggedTaskId: string | null = null;
@@ -190,7 +192,7 @@ taskListElement.addEventListener("keydown", (event) => {
 taskListElement.addEventListener("dragstart", (event) => {
   const target = event.target;
 
-  if (!(target instanceof Element) || isLoadBlocked || isSaving) {
+  if (!(target instanceof Element) || isEditingLocked()) {
     event.preventDefault();
     return;
   }
@@ -222,7 +224,7 @@ taskListElement.addEventListener("dragstart", (event) => {
 });
 
 taskListElement.addEventListener("dragover", (event) => {
-  if (!draggedTaskId || isLoadBlocked || isSaving) {
+  if (!draggedTaskId || isEditingLocked()) {
     return;
   }
 
@@ -242,7 +244,7 @@ taskListElement.addEventListener("dragover", (event) => {
 });
 
 taskListElement.addEventListener("drop", (event) => {
-  if (!draggedTaskId || isLoadBlocked || isSaving) {
+  if (!draggedTaskId || isEditingLocked()) {
     return;
   }
 
@@ -276,6 +278,7 @@ taskListElement.addEventListener("dragend", () => {
 });
 
 renderDateHeader();
+updateBusyState();
 void initialize();
 
 async function initialize() {
@@ -284,12 +287,15 @@ async function initialize() {
 
   try {
     data = repairData(await invoke<DaynoteData>("load_daynote_data"));
+    isLoading = false;
     isLoadBlocked = false;
     setStatus("");
   } catch (error) {
+    isLoading = false;
     data = createEmptyData();
     isLoadBlocked = true;
     taskInputElement.value = "";
+    clearDragState();
     setStatus(
       `读取失败：${formatError(error)}。为避免覆盖已有数据，DayNote 已暂停编辑和保存。请重启应用，或检查应用数据目录中的 daynote.json。`,
       true,
@@ -307,7 +313,7 @@ async function initialize() {
 async function addTask() {
   const text = taskInputElement.value.trim();
 
-  if (isLoadBlocked || !text || isSaving) {
+  if (isEditingLocked() || !text) {
     return;
   }
 
@@ -331,7 +337,7 @@ async function addTask() {
 }
 
 async function toggleTask(taskId: string | null) {
-  if (isLoadBlocked || !taskId || isSaving) {
+  if (isEditingLocked() || !taskId) {
     return;
   }
 
@@ -350,7 +356,7 @@ async function toggleTask(taskId: string | null) {
 }
 
 async function setTaskImportance(taskId: string, importance: Importance) {
-  if (isLoadBlocked || isSaving) {
+  if (isEditingLocked()) {
     return;
   }
 
@@ -368,7 +374,7 @@ async function setTaskImportance(taskId: string, importance: Importance) {
 }
 
 async function deleteTask(taskId: string | null) {
-  if (isLoadBlocked || !taskId || isSaving) {
+  if (isEditingLocked() || !taskId) {
     return;
   }
 
@@ -393,7 +399,7 @@ async function deleteTask(taskId: string | null) {
 }
 
 async function persist(successMessage: string) {
-  if (isLoadBlocked) {
+  if (isLoading || isLoadBlocked) {
     return;
   }
 
@@ -431,7 +437,7 @@ function renderTask(task: Task) {
   item.dataset.taskId = task.id;
   item.dataset.importance = task.importance;
   item.tabIndex = 0;
-  item.draggable = !isLoadBlocked && !isSaving;
+  item.draggable = !isEditingLocked();
   item.setAttribute(
     "aria-label",
     `${task.done ? "已完成" : "未完成"}，重要性 ${IMPORTANCE_LABELS[task.importance]}，${task.text}`,
@@ -440,7 +446,7 @@ function renderTask(task: Task) {
   const toggleButton = document.createElement("button");
   toggleButton.className = "task-toggle";
   toggleButton.type = "button";
-  toggleButton.disabled = isLoadBlocked || isSaving;
+  toggleButton.disabled = isEditingLocked();
   toggleButton.dataset.action = "toggle";
   toggleButton.setAttribute(
     "aria-label",
@@ -468,7 +474,7 @@ function renderTask(task: Task) {
     button.type = "button";
     button.className = `priority-button priority-${importance}`;
     button.dataset.importance = importance;
-    button.disabled = isLoadBlocked || isSaving;
+    button.disabled = isEditingLocked();
     button.textContent = IMPORTANCE_LABELS[importance];
     button.setAttribute("aria-label", `设为${IMPORTANCE_LABELS[importance]}重要性`);
     button.setAttribute("aria-pressed", String(task.importance === importance));
@@ -484,7 +490,7 @@ function renderTask(task: Task) {
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
   deleteButton.type = "button";
-  deleteButton.disabled = isLoadBlocked || isSaving;
+  deleteButton.disabled = isEditingLocked();
   deleteButton.dataset.action = "delete";
   deleteButton.setAttribute("aria-label", `删除任务：${task.text}`);
   deleteButton.textContent = "×";
@@ -495,7 +501,7 @@ function renderTask(task: Task) {
 }
 
 function navigateDay(dayOffset: number) {
-  if (isSaving) {
+  if (isLoading || isSaving) {
     return;
   }
 
@@ -549,18 +555,25 @@ function renderEmptyState() {
 }
 
 function updateBusyState() {
-  const locked = isLoadBlocked || isSaving;
+  const locked = isEditingLocked();
+  const navigationLocked = isLoading || isSaving;
 
   taskInputElement.disabled = locked;
-  taskInputElement.placeholder = isLoadBlocked
-    ? LOAD_BLOCKED_PLACEHOLDER
-    : getInputPlaceholder();
+  taskInputElement.placeholder = isLoading
+    ? LOADING_PLACEHOLDER
+    : isLoadBlocked
+      ? LOAD_BLOCKED_PLACEHOLDER
+      : getInputPlaceholder();
   addTaskButtonElement.disabled = locked;
-  previousDayButtonElement.disabled = isSaving;
-  nextDayButtonElement.disabled = isSaving;
+  previousDayButtonElement.disabled = navigationLocked;
+  nextDayButtonElement.disabled = navigationLocked;
   composerElement.toggleAttribute("aria-disabled", locked);
-  taskListElement.toggleAttribute("aria-busy", isSaving);
+  taskListElement.toggleAttribute("aria-busy", isLoading || isSaving);
   taskListElement.setAttribute("aria-disabled", String(locked));
+}
+
+function isEditingLocked() {
+  return isLoading || isSaving || isLoadBlocked;
 }
 
 function setStatus(message: string, isError = false) {

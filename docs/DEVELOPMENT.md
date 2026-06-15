@@ -123,7 +123,7 @@ Each milestone must be implemented and committed separately.
 - Avoid background timers unless they are strictly necessary.
 - Avoid continuous animations. Use short CSS transitions triggered by user action.
 - Keep the app offline-first.
-- Treat local data as user-owned: write `daynote.json` through a synced same-directory temporary file before replacement, and block edits/saves after a load failure so unreadable data is not overwritten.
+- Treat local data as user-owned: write `daynote.json` through a synced same-directory temporary file before replacement, and block edits/saves during initial loading or after a load failure so unreadable or not-yet-loaded data is not overwritten.
 - Keep all text readable in Simplified Chinese.
 - Do not introduce telemetry.
 - Do not use remote fonts or remote assets.
