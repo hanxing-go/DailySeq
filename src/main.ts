@@ -2,11 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 
-const DEFAULT_IMPORTANCE = "medium";
+type Importance = "low" | "medium" | "high";
+type DropPosition = "before" | "after";
+
+const DEFAULT_IMPORTANCE: Importance = "medium";
 const LOCALE = "zh-CN";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
-
-type Importance = "low" | "medium" | "high";
+const IMPORTANCE_LABELS: Record<Importance, string> = {
+  low: "低",
+  medium: "中",
+  high: "高",
+};
 
 interface Task {
   id: string;
@@ -37,6 +43,9 @@ let data: DaynoteData = createEmptyData();
 let focusedTaskId: string | null = null;
 let isSaving = false;
 let isLoadBlocked = false;
+let draggedTaskId: string | null = null;
+let dropTargetTaskId: string | null = null;
+let dropPosition: DropPosition = "before";
 
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
@@ -81,20 +90,34 @@ taskListElement.addEventListener("click", (event) => {
     return;
   }
 
-  const taskItem = target.closest<HTMLLIElement>("[data-task-id]");
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
 
   if (!taskItem) {
     return;
   }
 
-  focusedTaskId = taskItem.dataset.taskId ?? null;
+  const taskId = taskItem.dataset.taskId ?? null;
+  focusedTaskId = taskId;
+
+  const importanceButton = target.closest<HTMLButtonElement>("button[data-importance]");
+
+  if (importanceButton) {
+    const importance = importanceButton.dataset.importance;
+
+    if (taskId && isImportance(importance)) {
+      void setTaskImportance(taskId, importance);
+    }
+
+    return;
+  }
 
   if (target.closest("[data-action='toggle']")) {
-    void toggleTask(taskItem.dataset.taskId);
+    void toggleTask(taskId);
+    return;
   }
 
   if (target.closest("[data-action='delete']")) {
-    void deleteTask(taskItem.dataset.taskId);
+    void deleteTask(taskId);
   }
 });
 
@@ -115,26 +138,119 @@ taskListElement.addEventListener("keydown", (event) => {
     return;
   }
 
-  const taskId = target.closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? focusedTaskId;
-  const actionButton = target.closest<HTMLButtonElement>("button[data-action]");
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
 
-  if (!taskId) {
+  if (!taskItem) {
     return;
   }
 
-  if (event.key === " " || event.code === "Space") {
-    if (actionButton) {
-      return;
-    }
+  const taskId = taskItem.dataset.taskId ?? null;
+  const isInteractive = Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
 
+  if (taskId && event.ctrlKey && isPriorityShortcut(event.key)) {
     event.preventDefault();
-    void toggleTask(taskId);
+    void setTaskImportance(taskId, importanceFromShortcut(event.key));
+    return;
   }
 
-  if (event.key === "Delete") {
+  if (!isInteractive && (event.key === " " || event.code === "Space")) {
+    event.preventDefault();
+    void toggleTask(taskId);
+    return;
+  }
+
+  if (!isInteractive && event.key === "Delete") {
     event.preventDefault();
     void deleteTask(taskId);
   }
+});
+
+taskListElement.addEventListener("dragstart", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element) || isLoadBlocked || isSaving) {
+    event.preventDefault();
+    return;
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem || target.closest("button, input, textarea, select, a, [role='button']")) {
+    event.preventDefault();
+    return;
+  }
+
+  const taskId = taskItem.dataset.taskId ?? null;
+
+  if (!taskId) {
+    event.preventDefault();
+    return;
+  }
+
+  draggedTaskId = taskId;
+  dropTargetTaskId = null;
+  dropPosition = "before";
+  focusedTaskId = taskId;
+  updateDragIndicators();
+
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", taskId);
+  }
+});
+
+taskListElement.addEventListener("dragover", (event) => {
+  if (!draggedTaskId || isLoadBlocked || isSaving) {
+    return;
+  }
+
+  const target = resolveDropTarget(event);
+
+  if (!target) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  setDropTarget(target.taskId, target.position);
+});
+
+taskListElement.addEventListener("drop", (event) => {
+  if (!draggedTaskId || isLoadBlocked || isSaving) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const target = resolveDropTarget(event);
+  const sourceTaskId = draggedTaskId;
+
+  clearDragState();
+
+  if (!target || !sourceTaskId) {
+    focusTask(sourceTaskId ?? focusedTaskId ?? "");
+    return;
+  }
+
+  const moved = moveTask(sourceTaskId, target.taskId, target.position);
+
+  if (!moved) {
+    focusTask(sourceTaskId);
+    return;
+  }
+
+  focusedTaskId = sourceTaskId;
+  render();
+  void persist("已调整顺序");
+  focusTask(sourceTaskId);
+});
+
+taskListElement.addEventListener("dragend", () => {
+  clearDragState();
 });
 
 setTodayHeader(today);
@@ -155,13 +271,14 @@ async function initialize() {
     isLoadBlocked = true;
     taskInputElement.value = "";
     setStatus(
-      `读取失败：${formatError(error)}。为避免覆盖已有数据，DayNote 已暂时阻止编辑和保存。请重启应用，或检查应用数据目录中的 daynote.json。`,
+      `读取失败：${formatError(error)}。为避免覆盖已有数据，DayNote 已暂停编辑和保存。请重启应用，或检查应用数据目录中的 daynote.json。`,
       true,
     );
   }
 
   updateBusyState();
   render();
+
   if (!isLoadBlocked) {
     taskInputElement.focus();
   }
@@ -193,7 +310,7 @@ async function addTask() {
   focusTask(task.id);
 }
 
-async function toggleTask(taskId: string | undefined) {
+async function toggleTask(taskId: string | null) {
   if (isLoadBlocked || !taskId || isSaving) {
     return;
   }
@@ -212,7 +329,25 @@ async function toggleTask(taskId: string | undefined) {
   focusTask(task.id);
 }
 
-async function deleteTask(taskId: string | undefined) {
+async function setTaskImportance(taskId: string, importance: Importance) {
+  if (isLoadBlocked || isSaving) {
+    return;
+  }
+
+  const task = findTask(taskId);
+
+  if (!task || task.importance === importance) {
+    return;
+  }
+
+  task.importance = importance;
+  focusedTaskId = task.id;
+  render();
+  await persist(`已设为${IMPORTANCE_LABELS[importance]}重要性`);
+  focusTask(task.id);
+}
+
+async function deleteTask(taskId: string | null) {
   if (isLoadBlocked || !taskId || isSaving) {
     return;
   }
@@ -270,30 +405,67 @@ function renderTask(task: Task) {
   const item = document.createElement("li");
   item.className = `task-item${task.done ? " is-done" : ""}`;
   item.dataset.taskId = task.id;
+  item.dataset.importance = task.importance;
   item.tabIndex = 0;
-  item.setAttribute("aria-label", `${task.done ? "已完成" : "未完成"}：${task.text}`);
+  item.draggable = !isLoadBlocked && !isSaving;
+  item.setAttribute(
+    "aria-label",
+    `${task.done ? "已完成" : "未完成"}，重要性 ${IMPORTANCE_LABELS[task.importance]}，${task.text}`,
+  );
 
   const toggleButton = document.createElement("button");
   toggleButton.className = "task-toggle";
   toggleButton.type = "button";
-  toggleButton.disabled = isLoadBlocked;
+  toggleButton.disabled = isLoadBlocked || isSaving;
   toggleButton.dataset.action = "toggle";
-  toggleButton.setAttribute("aria-label", task.done ? `标记为未完成：${task.text}` : `标记为完成：${task.text}`);
+  toggleButton.setAttribute(
+    "aria-label",
+    task.done ? `标记为未完成：${task.text}` : `标记为已完成：${task.text}`,
+  );
   toggleButton.setAttribute("aria-pressed", String(task.done));
+
+  const content = document.createElement("div");
+  content.className = "task-content";
 
   const textElement = document.createElement("span");
   textElement.className = "task-text";
   textElement.textContent = task.text;
 
+  const meta = document.createElement("div");
+  meta.className = "task-meta";
+
+  const importanceGroup = document.createElement("div");
+  importanceGroup.className = "task-importance";
+  importanceGroup.setAttribute("role", "group");
+  importanceGroup.setAttribute("aria-label", "设置重要性");
+
+  for (const importance of ["low", "medium", "high"] as const) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `priority-button priority-${importance}`;
+    button.dataset.importance = importance;
+    button.disabled = isLoadBlocked || isSaving;
+    button.textContent = IMPORTANCE_LABELS[importance];
+    button.setAttribute("aria-label", `设为${IMPORTANCE_LABELS[importance]}重要性`);
+    button.setAttribute("aria-pressed", String(task.importance === importance));
+    if (task.importance === importance) {
+      button.classList.add("is-active");
+    }
+    importanceGroup.append(button);
+  }
+
+  meta.append(importanceGroup);
+  content.append(textElement, meta);
+
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
   deleteButton.type = "button";
-  deleteButton.disabled = isLoadBlocked;
+  deleteButton.disabled = isLoadBlocked || isSaving;
   deleteButton.dataset.action = "delete";
-  deleteButton.setAttribute("aria-label", `删除计划：${task.text}`);
+  deleteButton.setAttribute("aria-label", `删除任务：${task.text}`);
   deleteButton.textContent = "×";
 
-  item.append(toggleButton, textElement, deleteButton);
+  item.append(toggleButton, content, deleteButton);
 
   return item;
 }
@@ -309,13 +481,16 @@ function setTodayHeader(date: Date) {
 }
 
 function updateBusyState() {
-  taskInputElement.disabled = isLoadBlocked || isSaving;
+  const locked = isLoadBlocked || isSaving;
+
+  taskInputElement.disabled = locked;
   taskInputElement.placeholder = isLoadBlocked
     ? LOAD_BLOCKED_PLACEHOLDER
     : "写下一件今天要完成的小事";
-  addTaskButtonElement.disabled = isLoadBlocked || isSaving;
-  composerElement.toggleAttribute("aria-disabled", isLoadBlocked);
+  addTaskButtonElement.disabled = locked;
+  composerElement.toggleAttribute("aria-disabled", locked);
   taskListElement.toggleAttribute("aria-busy", isSaving);
+  taskListElement.setAttribute("aria-disabled", String(locked));
 }
 
 function setStatus(message: string, isError = false) {
@@ -324,8 +499,8 @@ function setStatus(message: string, isError = false) {
 }
 
 function ensureTodayPlan() {
-  data.days[todayKey] ??= { tasks: [] };
-  data.days[todayKey].tasks = repairTasks(data.days[todayKey].tasks);
+  const dayPlan = (data.days[todayKey] ??= { tasks: [] });
+  dayPlan.tasks = repairTasks(dayPlan.tasks ?? []);
 }
 
 function getTodayTasks() {
@@ -338,32 +513,91 @@ function findTask(taskId: string) {
 }
 
 function repairData(value: DaynoteData | null | undefined): DaynoteData {
-  const repaired = value ?? createEmptyData();
-  repaired.days ??= {};
-  repaired.settings ??= { theme: "jade" };
-  repaired.settings.theme ||= "jade";
+  const source = value ?? createEmptyData();
+  const repaired: DaynoteData = {
+    days: {},
+    settings: {
+      theme: typeof source.settings?.theme === "string" && source.settings.theme.trim()
+        ? source.settings.theme.trim()
+        : "jade",
+    },
+  };
 
-  for (const day of Object.values(repaired.days)) {
-    day.tasks = repairTasks(day.tasks ?? []);
+  for (const [date, day] of Object.entries(source.days ?? {})) {
+    const tasks = Array.isArray((day as DayPlan | undefined)?.tasks) ? (day as DayPlan).tasks : [];
+    repaired.days[date] = { tasks: repairTasks(tasks) };
   }
 
   return repaired;
 }
 
-function repairTasks(tasks: Task[]) {
+function repairTasks(tasks: Array<Partial<Task> | null | undefined>) {
   const repaired = tasks
-    .filter((task) => task.id && task.text.trim())
-    .map((task) => ({
-      ...task,
-      text: task.text.trim(),
-      importance: isImportance(task.importance) ? task.importance : DEFAULT_IMPORTANCE,
-      completedAt: task.done ? task.completedAt : null,
-    }))
-    .sort((first, second) => first.order - second.order);
+    .map((task, index) => {
+      const id = typeof task?.id === "string" ? task.id.trim() : "";
+      const text = typeof task?.text === "string" ? task.text.trim() : "";
+      const importance = isImportance(task?.importance) ? task.importance : DEFAULT_IMPORTANCE;
+      const createdAt = typeof task?.createdAt === "string" && task.createdAt.trim()
+        ? task.createdAt.trim()
+        : new Date().toISOString();
+      const completedAt =
+        Boolean(task?.done) && typeof task?.completedAt === "string" && task.completedAt.trim()
+          ? task.completedAt.trim()
+          : null;
+
+      return {
+        id: id || (text ? createTaskId() : ""),
+        text,
+        importance,
+        done: Boolean(task?.done),
+        createdAt,
+        completedAt,
+        order: normalizeOrder(task?.order, index),
+        sourceIndex: index,
+      };
+    })
+    .filter((task) => task.id && task.text)
+    .sort((first, second) => first.order - second.order || first.sourceIndex - second.sourceIndex)
+    .map(({ sourceIndex: _sourceIndex, ...task }) => task);
 
   resequenceTasks(repaired);
 
   return repaired;
+}
+
+function normalizeOrder(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosition) {
+  const tasks = getTodayTasks();
+  const fromIndex = tasks.findIndex((task) => task.id === sourceTaskId);
+  const targetIndex = tasks.findIndex((task) => task.id === targetTaskId);
+
+  if (fromIndex === -1 || targetIndex === -1 || fromIndex === targetIndex) {
+    return false;
+  }
+
+  if (position === "before" && fromIndex === targetIndex - 1) {
+    return false;
+  }
+
+  if (position === "after" && fromIndex === targetIndex + 1) {
+    return false;
+  }
+
+  const [movedTask] = tasks.splice(fromIndex, 1);
+
+  let insertIndex = position === "before" ? targetIndex : targetIndex + 1;
+
+  if (fromIndex < insertIndex) {
+    insertIndex -= 1;
+  }
+
+  tasks.splice(insertIndex, 0, movedTask);
+  resequenceTasks(tasks);
+
+  return true;
 }
 
 function resequenceTasks(tasks: Task[]) {
@@ -398,13 +632,95 @@ function toIsoDate(date: Date) {
 }
 
 function focusTask(taskId: string) {
+  if (!taskId) {
+    return;
+  }
+
   requestAnimationFrame(() => {
     taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`)?.focus();
   });
 }
 
-function isImportance(value: string): value is Importance {
+function resolveDropTarget(event: DragEvent) {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return resolveEndDropTarget();
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem) {
+    return resolveEndDropTarget();
+  }
+
+  const taskId = taskItem.dataset.taskId ?? null;
+
+  if (!taskId || taskId === draggedTaskId) {
+    return null;
+  }
+
+  const rect = taskItem.getBoundingClientRect();
+  const position: DropPosition = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+
+  return { taskId, position };
+}
+
+function resolveEndDropTarget() {
+  const lastTaskItem = taskListElement.querySelector<HTMLElement>("[data-task-id]:last-child");
+  const taskId = lastTaskItem?.dataset.taskId ?? null;
+
+  if (!taskId || taskId === draggedTaskId) {
+    return null;
+  }
+
+  return { taskId, position: "after" as DropPosition };
+}
+
+function setDropTarget(taskId: string | null, position: DropPosition) {
+  if (dropTargetTaskId === taskId && dropPosition === position) {
+    return;
+  }
+
+  dropTargetTaskId = taskId;
+  dropPosition = position;
+  updateDragIndicators();
+}
+
+function clearDragState() {
+  draggedTaskId = null;
+  dropTargetTaskId = null;
+  dropPosition = "before";
+  updateDragIndicators();
+}
+
+function updateDragIndicators() {
+  taskListElement.querySelectorAll<HTMLElement>(".task-item").forEach((item) => {
+    const taskId = item.dataset.taskId ?? "";
+    item.classList.toggle("is-dragging", taskId === draggedTaskId);
+    item.classList.toggle("is-drop-before", taskId === dropTargetTaskId && dropPosition === "before");
+    item.classList.toggle("is-drop-after", taskId === dropTargetTaskId && dropPosition === "after");
+  });
+}
+
+function isImportance(value: string | undefined): value is Importance {
   return value === "low" || value === "medium" || value === "high";
+}
+
+function isPriorityShortcut(key: string) {
+  return key === "1" || key === "2" || key === "3";
+}
+
+function importanceFromShortcut(key: string): Importance {
+  if (key === "1") {
+    return "low";
+  }
+
+  if (key === "2") {
+    return "medium";
+  }
+
+  return "high";
 }
 
 function formatError(error: unknown) {

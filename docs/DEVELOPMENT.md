@@ -71,7 +71,7 @@ Persist plans by ISO date:
 }
 ```
 
-The app should tolerate missing or older fields and repair them in memory before saving.
+The app should tolerate missing or older fields and repair them in memory before saving. Importance defaults to `medium` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows stored task order.
 
 ## Feature Milestones
 
@@ -97,6 +97,8 @@ Each milestone must be implemented and committed separately.
    - Quick controls.
    - Keyboard shortcuts.
    - Drag reorder.
+   - The list order follows `order`, not importance.
+   - Loading failures must block editing, importance changes, and drag saves.
 
 4. Date navigation.
    - Show current viewed date.
