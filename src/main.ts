@@ -5,7 +5,12 @@ const appWindow = getCurrentWindow();
 
 document.querySelectorAll<HTMLElement>("[data-tauri-drag-region]").forEach((item) => {
   item.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) {
+    const target = event.target;
+    const isInteractive =
+      target instanceof Element &&
+      Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
+
+    if (event.button !== 0 || isInteractive) {
       return;
     }
 

@@ -11,8 +11,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            register_global_shortcut(app.handle())?;
             build_tray(app.handle())?;
+            if let Err(error) = register_global_shortcut(app.handle()) {
+                eprintln!("failed to register DayNote global shortcut: {error}");
+            }
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
