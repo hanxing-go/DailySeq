@@ -123,7 +123,8 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             load_daynote_data,
-            save_daynote_data
+            save_daynote_data,
+            hide_main_window
         ])
         .setup(|app| {
             build_tray(app.handle())?;
@@ -191,6 +192,17 @@ fn save_daynote_data(app: AppHandle<Wry>, data: DaynoteData) -> Result<DaynoteDa
     replace_data_file(&temp_path, &path)?;
 
     Ok(repaired)
+}
+
+#[tauri::command]
+fn hide_main_window(app: AppHandle<Wry>) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        return Ok(());
+    };
+
+    window
+        .hide()
+        .map_err(|error| format!("隐藏 DayNote 窗口失败：{error}"))
 }
 
 fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf, String> {

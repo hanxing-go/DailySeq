@@ -27,6 +27,7 @@ Released users should download the installer or app bundle for their platform. T
 
 - `Ctrl+Alt+D`: show or hide DayNote on Windows/Linux.
 - `Command+Option+D`: show or hide DayNote on macOS.
+- `Esc`: hide the visible DayNote window to the tray/menu bar.
 - `Ctrl+Enter`: add the typed task.
 - `Alt+Left` / `Alt+Right`: move to the previous / next day when focus is not in a text field.
 - `Space`: toggle a focused task.
@@ -163,8 +164,10 @@ To also build installers after verification:
 ## Desktop Shell Details
 
 - The main window is a compact always-on-top note panel.
-- The window is transparent, undecorated, and draggable from the header/date area.
+- The window is transparent, undecorated, and draggable from the panel edge and blank shell areas.
+- Buttons, text fields, task cards, importance controls, delete/complete controls, and the task list scrollbar keep their normal interactions instead of starting a window drag.
 - Closing the window hides it so DayNote can remain resident in the tray/menu bar.
+- Use the header tray button or `Esc` to hide the visible window to the tray/menu bar.
 - The tray/menu-bar entry supports show/hide and quit.
 - The global shortcut is `Ctrl+Alt+D` on Windows/Linux. On macOS, the Rust registration maps to `Command+Option+D`, matching the platform preference from `docs/DEVELOPMENT.md`.
 
@@ -177,7 +180,7 @@ To also build installers after verification:
 - Tasks are stored under local ISO date keys in the `days` map.
 - New tasks use `importance: "medium"` by default.
 - Add, toggle complete, delete, importance changes, and manual ordering all apply to the currently viewed day.
-- Keyboard support: `Ctrl+Enter` adds the typed task, `Alt+Left` / `Alt+Right` move to the previous / next day when focus is not in a text field, `Space` toggles a focused task, `Delete` removes a focused task, and `Ctrl+1` / `Ctrl+2` / `Ctrl+3` set focused task importance to low / medium / high.
+- Keyboard support: `Esc` hides DayNote to the tray/menu bar, `Ctrl+Enter` adds the typed task, `Alt+Left` / `Alt+Right` move to the previous / next day when focus is not in a text field, `Space` toggles a focused task, `Delete` removes a focused task, and `Ctrl+1` / `Ctrl+2` / `Ctrl+3` set focused task importance to low / medium / high.
 
 ## Importance and Ordering
 

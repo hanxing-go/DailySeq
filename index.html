@@ -7,7 +7,7 @@
   </head>
   <body>
     <main id="app" class="note-shell">
-      <header class="note-header" data-tauri-drag-region>
+      <header class="note-header">
         <button id="previous-day" class="icon-button" type="button" aria-label="上一天（Alt+Left）">
           <span aria-hidden="true">‹</span>
         </button>
@@ -17,6 +17,9 @@
         </div>
         <button id="next-day" class="icon-button" type="button" aria-label="下一天（Alt+Right）">
           <span aria-hidden="true">›</span>
+        </button>
+        <button id="hide-to-tray" class="icon-button tray-button" type="button" aria-label="缩小至托盘（Esc）" title="缩小至托盘（Esc）">
+          <span aria-hidden="true">−</span>
         </button>
       </header>
 

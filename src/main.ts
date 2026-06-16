@@ -73,6 +73,7 @@ const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
 const nextDayButtonElement = requireElement<HTMLButtonElement>("#next-day");
+const hideToTrayButtonElement = requireElement<HTMLButtonElement>("#hide-to-tray");
 const composerElement = requireElement<HTMLFormElement>("#composer");
 const taskInputElement = requireElement<HTMLInputElement>("#task-input");
 const addTaskButtonElement = requireElement<HTMLButtonElement>("#add-task");
@@ -83,19 +84,12 @@ const emptyStateDetailElement = requireElement<HTMLElement>("#empty-state-detail
 const taskListElement = requireElement<HTMLUListElement>("#task-list");
 const allDoneRewardElement = requireElement<HTMLElement>("#all-done-reward");
 
-document.querySelectorAll<HTMLElement>("[data-tauri-drag-region]").forEach((item) => {
-  item.addEventListener("pointerdown", (event) => {
-    const target = event.target;
-    const isInteractive =
-      target instanceof Element &&
-      Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
+noteShellElement.addEventListener("pointerdown", (event) => {
+  if (!canStartWindowDrag(event)) {
+    return;
+  }
 
-    if (event.button !== 0 || isInteractive) {
-      return;
-    }
-
-    void appWindow.startDragging();
-  });
+  void appWindow.startDragging();
 });
 
 composerElement.addEventListener("submit", (event) => {
@@ -118,8 +112,26 @@ nextDayButtonElement.addEventListener("click", () => {
   navigateDay(1);
 });
 
+hideToTrayButtonElement.addEventListener("click", () => {
+  void hideToTray();
+});
+
 document.addEventListener("keydown", (event) => {
-  if (!isDayNavigationShortcut(event) || isTextEntryElement(document.activeElement)) {
+  if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
+
+  if (isTextEntryElement(document.activeElement)) {
+    return;
+  }
+
+  if (isHideToTrayShortcut(event)) {
+    event.preventDefault();
+    void hideToTray();
+    return;
+  }
+
+  if (!isDayNavigationShortcut(event)) {
     return;
   }
 
@@ -462,6 +474,14 @@ async function persist(successMessage: string) {
     isSaving = false;
     updateBusyState();
     render();
+  }
+}
+
+async function hideToTray() {
+  try {
+    await invoke("hide_main_window");
+  } catch (error) {
+    setStatus(`缩小至托盘失败：${formatError(error)}`, true);
   }
 }
 
@@ -1086,8 +1106,51 @@ function updateDragIndicators() {
   });
 }
 
+function canStartWindowDrag(event: PointerEvent) {
+  if (event.button !== 0) {
+    return false;
+  }
+
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return !isWindowDragBlockedTarget(target);
+}
+
+function isWindowDragBlockedTarget(target: Element) {
+  return Boolean(
+    target.closest(
+      [
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "a",
+        "[role='button']",
+        "[contenteditable='true']",
+        "[data-task-id]",
+        "#task-list",
+        ".composer",
+      ].join(", "),
+    ),
+  );
+}
+
 function isImportance(value: string | undefined): value is Importance {
   return value === "low" || value === "medium" || value === "high";
+}
+
+function isHideToTrayShortcut(event: KeyboardEvent) {
+  return (
+    event.key === "Escape" &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  );
 }
 
 function isDayNavigationShortcut(event: KeyboardEvent) {
