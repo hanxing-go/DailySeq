@@ -534,8 +534,12 @@ async function toggleTask(taskId: string | null) {
   const taskLayoutBeforeToggle = captureTaskLayout();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
-  task.order = task.done ? getPreviousOrderInCompletionGroup(getViewedTasks(), true, task.id) : getNextOrderInCompletionGroup(getViewedTasks(), false, task.id);
-  sortAndResequenceTasks(getViewedTasks());
+  task.order = getPreviousOrderInCompletionGroup(getViewedTasks(), task.done, task.id);
+  if (task.done) {
+    sortAndResequenceTasks(getViewedTasks());
+  } else {
+    sortByImportanceAndResequenceTasks(getViewedTasks());
+  }
   focusedTaskId = task.id;
   if (task.done) {
     markTaskAsCompleted(task.id);
@@ -618,7 +622,6 @@ async function persist(successMessage: string, options: { rerender?: boolean } =
 
   isSaving = true;
   updateBusyState();
-  setStatus("正在保存...");
 
   try {
     data = repairData(await invoke<DailySeqData>("save_dailyseq_data", { data }));
@@ -630,7 +633,7 @@ async function persist(successMessage: string, options: { rerender?: boolean } =
   } finally {
     isSaving = false;
     updateBusyState();
-    if (options.rerender !== false) {
+    if (options.rerender === true) {
       render();
     }
   }
@@ -829,7 +832,7 @@ function handleScopeTabKeyDown(event: KeyboardEvent) {
 }
 
 function renderScopeTabs() {
-  const navigationLocked = isLoading || isSaving;
+  const navigationLocked = isLoading;
 
   scopeTabElements.forEach((button) => {
     const isSelected = button.dataset.planScope === currentPlanScope;
@@ -847,7 +850,7 @@ function renderDateHeader() {
   previousDayButtonElement.title = getNavigationLabel(-1);
   nextDayButtonElement.setAttribute("aria-label", getNavigationLabel(1));
   nextDayButtonElement.title = getNavigationLabel(1);
-  todayButtonElement.disabled = isLoading || isSaving || getDayOffset(viewedDate) === 0;
+  todayButtonElement.disabled = isLoading || getDayOffset(viewedDate) === 0;
   todayButtonElement.title = currentPlanScope === "day" ? "回到今天" : "回到今天所在计划";
   todayButtonElement.setAttribute("aria-label", todayButtonElement.title);
   datePickerElement.value = viewedDateKey;
@@ -930,8 +933,8 @@ function renderScopedEmptyState(scope: Exclude<PlanScope, "day">) {
 }
 
 function updateBusyState() {
-  const locked = isEditingLocked();
-  const navigationLocked = isLoading || isSaving;
+  const locked = isEditingVisuallyLocked();
+  const navigationLocked = isLoading;
 
   renderScopeTabs();
   taskInputElement.disabled = locked;
@@ -955,6 +958,10 @@ function updateBusyState() {
 
 function isEditingLocked() {
   return isLoading || isSaving || isLoadBlocked;
+}
+
+function isEditingVisuallyLocked() {
+  return isLoading || isLoadBlocked;
 }
 
 function setStatus(message: string, isError = false) {
@@ -1339,16 +1346,6 @@ function tasksBelongToSameOrderGroup(first: Task, second: Task) {
 
 function getNextOrder(tasks: Task[]) {
   return tasks.reduce((nextOrder, task) => Math.max(nextOrder, task.order + 1), 0);
-}
-
-function getNextOrderInCompletionGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
-  return tasks.reduce((nextOrder, task) => {
-    if (task.id === ignoredTaskId || task.done !== done) {
-      return nextOrder;
-    }
-
-    return Math.max(nextOrder, task.order + 1);
-  }, 0);
 }
 
 function getPreviousOrderInCompletionGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
