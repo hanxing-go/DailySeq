@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-ssr/
 .vite/
+.codegraph/
 
 src-tauri/target/
 src-tauri/gen/

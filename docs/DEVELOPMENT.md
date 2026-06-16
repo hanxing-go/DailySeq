@@ -1,6 +1,6 @@
-# DayNote Development Guide
+# DailySeq Development Guide
 
-DayNote is a lightweight cross-platform desktop sticky-note planner. The product goal is simple: press one global shortcut, add or review daily plans, and leave the computer feeling almost untouched.
+DailySeq is a lightweight cross-platform desktop sticky-note planner. The product goal is simple: press one global shortcut, add or review daily plans, and leave the computer feeling almost untouched.
 
 ## Tech Stack
 
@@ -14,7 +14,7 @@ This stack keeps the app small because it uses the operating system WebView inst
 
 ## Platform Strategy
 
-DayNote targets Windows, macOS, and Linux.
+DailySeq targets Windows, macOS, and Linux.
 
 - Windows development needs Rust, MSVC Build Tools, Node.js, and npm.
 - macOS development needs Rust, Node.js, npm, and Xcode Command Line Tools.
@@ -35,9 +35,9 @@ The main window is a compact always-on-top note panel, not a full dashboard. It 
 
 ## Default Shortcuts
 
-- `Ctrl+Alt+D`: show or hide DayNote on Windows/Linux.
-- `Command+Option+D`: show or hide DayNote on macOS.
-- `Esc`: hide the visible DayNote window to the tray/menu bar.
+- `Ctrl+Alt+D`: show or hide DailySeq on Windows/Linux.
+- `Command+Option+D`: show or hide DailySeq on macOS.
+- `Esc`: hide the visible DailySeq window to the tray/menu bar.
 - `Ctrl+Enter`: add the current task.
 - `Alt+Left`: previous day, week, or month for the active plan view.
 - `Alt+Right`: next day, week, or month for the active plan view.
@@ -101,7 +101,7 @@ Each milestone must be implemented and committed separately.
    - Delete task.
    - Persist by day.
    - Default new task importance to `low` until importance controls are implemented.
-   - Store the JSON file as `daynote.json` in the Tauri app data directory.
+   - Store the JSON file as `dailyseq.json` in the Tauri app data directory.
 
 3. Importance and ordering.
    - Low, medium, high importance.
@@ -134,7 +134,7 @@ Each milestone must be implemented and committed separately.
 - Avoid background timers unless they are strictly necessary.
 - Avoid continuous animations. Use short CSS transitions triggered by user action.
 - Keep the app offline-first.
-- Treat local data as user-owned: write `daynote.json` through a synced same-directory temporary file before replacement, and block edits/saves during initial loading or after a load failure so unreadable or not-yet-loaded data is not overwritten.
+- Treat local data as user-owned: write `dailyseq.json` through a synced same-directory temporary file before replacement, and block edits/saves during initial loading or after a load failure so unreadable or not-yet-loaded data is not overwritten.
 - Keep all text readable in Simplified Chinese.
 - Do not introduce telemetry.
 - Do not use remote fonts or remote assets.
@@ -171,12 +171,12 @@ For each milestone:
 
 ## Release and Packaging Flow
 
-DayNote releases are built as native desktop artifacts. Users install those artifacts directly and do not need Rust, Node.js, npm, or the source tree.
+DailySeq releases are built as native desktop artifacts. Users install those artifacts directly and do not need Rust, Node.js, npm, or the source tree.
 
 1. Confirm the worktree and version inputs.
    - Inspect `git status --short` and keep unrelated user changes intact.
    - Keep `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` versions aligned when cutting a real release.
-   - Review `src-tauri/tauri.conf.json` bundle targets. DayNote currently uses `"targets": "all"`.
+   - Review `src-tauri/tauri.conf.json` bundle targets. DailySeq currently uses `"targets": "all"`.
 
 2. Install dependencies when needed.
    - Run `npm install` after dependency or lockfile changes.
@@ -204,7 +204,7 @@ DayNote releases are built as native desktop artifacts. Users install those arti
    - Add, complete, delete, prioritize, reorder, and navigate dates.
    - Close the window and confirm tray/menu-bar show/hide and quit behavior.
    - Press `Esc` or the top-left close button and confirm the window hides to the tray/menu bar.
-   - Restart the app and confirm `daynote.json` data persisted.
+   - Restart the app and confirm `dailyseq.json` data persisted.
 
 ## Commit and Review Flow
 

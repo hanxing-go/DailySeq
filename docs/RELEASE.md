@@ -1,4 +1,4 @@
-# DayNote Release Checklist
+# DailySeq Release Checklist
 
 Use this checklist when preparing a local release or a CI release job.
 
@@ -7,7 +7,7 @@ Use this checklist when preparing a local release or a CI release job.
 - Build on the same operating system as the artifact you want to ship, unless a CI job is explicitly configured for cross-compilation.
 - End users receive platform installers or app bundles. They do not need Rust, Node.js, npm, or this repository.
 - Keep versions aligned across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` for a real release.
-- Do not clean build folders or touch local `daynote.json` user data as part of packaging.
+- Do not clean build folders or touch local `dailyseq.json` user data as part of packaging.
 
 ## Verify
 
@@ -63,8 +63,8 @@ src-tauri/target/release/bundle/nsis/
 Typical Windows names:
 
 ```text
-DayNote_0.1.0_x64_en-US.msi
-DayNote_0.1.0_x64-setup.exe
+DailySeq_0.1.0_x64_en-US.msi
+DailySeq_0.1.0_x64-setup.exe
 ```
 
 macOS and Linux artifacts are produced by Tauri under platform-specific folders in:

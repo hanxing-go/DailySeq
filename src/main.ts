@@ -56,7 +56,7 @@ interface DayPlan {
 
 type PlanMap = Record<string, DayPlan>;
 
-interface DaynoteData {
+interface DailySeqData {
   days: PlanMap;
   weeks: PlanMap;
   months: PlanMap;
@@ -79,7 +79,7 @@ interface TaskDragState extends TaskDragCandidate {
 
 const appWindow = getCurrentWindow();
 
-let data: DaynoteData = createEmptyData();
+let data: DailySeqData = createEmptyData();
 let currentPlanScope: PlanScope = "day";
 let viewedDate = startOfLocalDay(new Date());
 let viewedDateKey = toIsoDate(viewedDate);
@@ -366,7 +366,7 @@ async function initialize() {
   updateBusyState();
 
   try {
-    data = repairData(await invoke<DaynoteData>("load_daynote_data"));
+    data = repairData(await invoke<DailySeqData>("load_dailyseq_data"));
     isLoading = false;
     isLoadBlocked = false;
     setStatus("");
@@ -377,7 +377,7 @@ async function initialize() {
     taskInputElement.value = "";
     clearDragState();
     setStatus(
-      `读取失败：${formatError(error)}。为避免覆盖已有数据，DayNote 已暂停编辑和保存。请重启应用，或检查应用数据目录中的 daynote.json。`,
+      `读取失败：${formatError(error)}。为避免覆盖已有数据，DailySeq 已暂停编辑和保存。请重启应用，或检查应用数据目录中的 dailyseq.json。`,
       true,
     );
   }
@@ -511,6 +511,8 @@ async function deleteTask(taskId: string | null) {
 }
 
 async function persist(successMessage: string, options: { rerender?: boolean } = {}) {
+  void successMessage;
+
   if (isLoading || isLoadBlocked) {
     return false;
   }
@@ -520,8 +522,8 @@ async function persist(successMessage: string, options: { rerender?: boolean } =
   setStatus("正在保存...");
 
   try {
-    data = repairData(await invoke<DaynoteData>("save_daynote_data", { data }));
-    setStatus(successMessage);
+    data = repairData(await invoke<DailySeqData>("save_dailyseq_data", { data }));
+    setStatus("");
     return true;
   } catch (error) {
     setStatus(`保存失败：${formatError(error)}`, true);
@@ -592,9 +594,6 @@ function renderTask(task: Task) {
   textElement.className = "task-text";
   textElement.textContent = task.text;
 
-  const meta = document.createElement("div");
-  meta.className = "task-meta";
-
   const importanceGroup = document.createElement("div");
   importanceGroup.className = "task-importance";
   importanceGroup.setAttribute("role", "group");
@@ -605,8 +604,8 @@ function renderTask(task: Task) {
     button.type = "button";
     button.className = `priority-button priority-${importance}`;
     button.dataset.importance = importance;
+    button.dataset.label = IMPORTANCE_LABELS[importance];
     button.disabled = isEditingLocked();
-    button.textContent = IMPORTANCE_LABELS[importance];
     button.setAttribute("aria-label", `设为${IMPORTANCE_LABELS[importance]}重要性`);
     button.setAttribute("aria-pressed", String(task.importance === importance));
     if (task.importance === importance) {
@@ -615,8 +614,7 @@ function renderTask(task: Task) {
     importanceGroup.append(button);
   }
 
-  meta.append(importanceGroup);
-  content.append(textElement, meta);
+  content.append(textElement);
 
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
@@ -626,7 +624,7 @@ function renderTask(task: Task) {
   deleteButton.setAttribute("aria-label", `删除任务：${task.text}`);
   deleteButton.textContent = "×";
 
-  item.append(toggleButton, content, deleteButton);
+  item.append(toggleButton, content, importanceGroup, deleteButton);
 
   if (task.id === recentlyCompletedTaskId) {
     const sheen = document.createElement("span");
@@ -807,7 +805,7 @@ function renderEmptyState() {
 
   if (isLoadBlocked) {
     emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
-    emptyStateDetailElement.textContent = "读取失败后，DayNote 不会保存新内容。";
+    emptyStateDetailElement.textContent = "读取失败后，DailySeq 不会保存新内容。";
     emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
     return;
   }
@@ -835,7 +833,7 @@ function renderEmptyState() {
 function renderScopedEmptyState(scope: Exclude<PlanScope, "day">) {
   if (isLoadBlocked) {
     emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
-    emptyStateDetailElement.textContent = "读取失败后，DayNote 不会保存新内容。";
+    emptyStateDetailElement.textContent = "读取失败后，DailySeq 不会保存新内容。";
     emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
     return;
   }
@@ -1108,9 +1106,9 @@ function getViewedPlanStateKey() {
   return `${currentPlanScope}:${getViewedPlanKey()}`;
 }
 
-function repairData(value: DaynoteData | null | undefined): DaynoteData {
+function repairData(value: DailySeqData | null | undefined): DailySeqData {
   const source = value ?? createEmptyData();
-  const repaired: DaynoteData = {
+  const repaired: DailySeqData = {
     days: {},
     weeks: {},
     months: {},
@@ -1276,7 +1274,7 @@ function getPreviousOrderInCompletionGroup(tasks: Task[], done: boolean, ignored
   return groupOrders.length > 0 ? Math.min(...groupOrders) - 1 : 0;
 }
 
-function createEmptyData(): DaynoteData {
+function createEmptyData(): DailySeqData {
   return {
     days: {},
     weeks: {},

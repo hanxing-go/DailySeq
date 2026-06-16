@@ -12,7 +12,7 @@ if (Test-Path $CargoBin) {
     $env:Path = "$CargoBin;$env:Path"
 }
 
-function Invoke-DayNoteStep {
+function Invoke-DailySeqStep {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Name,
@@ -26,7 +26,7 @@ function Invoke-DayNoteStep {
     & $Command
 }
 
-function Invoke-DayNoteNative {
+function Invoke-DailySeqNative {
     param(
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$FilePath,
@@ -38,7 +38,7 @@ function Invoke-DayNoteNative {
     $CommandInfo = Get-Command $FilePath -ErrorAction Stop
 
     if ($CommandInfo.CommandType -ne "Application") {
-        throw "Invoke-DayNoteNative expected a native executable: $FilePath"
+        throw "Invoke-DailySeqNative expected a native executable: $FilePath"
     }
 
     & $CommandInfo.Source @ArgumentList
@@ -56,22 +56,22 @@ try {
         throw "node_modules is missing. Run 'npm install' before packaging."
     }
 
-    Invoke-DayNoteStep "Toolchain" {
-        Invoke-DayNoteNative node --version
-        Invoke-DayNoteNative npm.cmd --version
-        Invoke-DayNoteNative cargo --version
+    Invoke-DailySeqStep "Toolchain" {
+        Invoke-DailySeqNative node --version
+        Invoke-DailySeqNative npm.cmd --version
+        Invoke-DailySeqNative cargo --version
     }
 
-    Invoke-DayNoteStep "Verification" {
-        Invoke-DayNoteNative npm.cmd run check
+    Invoke-DailySeqStep "Verification" {
+        Invoke-DailySeqNative npm.cmd run check
     }
 
     if ($Bundle) {
-        Invoke-DayNoteStep "Windows bundle" {
-            Invoke-DayNoteNative npm.cmd run bundle
+        Invoke-DailySeqStep "Windows bundle" {
+            Invoke-DailySeqNative npm.cmd run bundle
         }
 
-        Invoke-DayNoteStep "Installer outputs" {
+        Invoke-DailySeqStep "Installer outputs" {
             Get-ChildItem -Path "src-tauri\target\release\bundle\msi", "src-tauri\target\release\bundle\nsis" -File -ErrorAction SilentlyContinue |
                 Select-Object FullName, Length, LastWriteTime |
                 Format-Table -AutoSize

@@ -100,7 +100,6 @@ button:disabled {
 .top-bar,
 .note-header,
 .composer,
-.status-message,
 .all-done-reward {
   flex: 0 0 auto;
 }
@@ -300,7 +299,7 @@ button:disabled {
   grid-template-columns: 36px minmax(0, 1fr) 36px;
   align-items: center;
   column-gap: 10px;
-  min-height: 86px;
+  min-height: 72px;
   user-select: none;
 }
 
@@ -312,7 +311,7 @@ button:disabled {
   grid-column: 2;
   display: grid;
   justify-items: center;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   overflow: hidden;
 }
@@ -324,7 +323,7 @@ button:disabled {
 .weekday {
   max-width: 100%;
   min-height: 21px;
-  display: inline-flex;
+  display: none;
   align-items: center;
   padding: 0 9px;
   border: 1px solid rgb(93 113 150 / 14%);
@@ -466,12 +465,13 @@ h1 {
 
 .composer input {
   min-width: 0;
-  height: 46px;
-  padding: 0 14px;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid rgb(60 82 69 / 16%);
-  border-radius: 14px;
+  border-radius: 12px;
   color: var(--text-main);
   background: rgb(255 253 246 / 78%);
+  font-size: 14px;
   outline: none;
   transition:
     border-color 140ms ease,
@@ -486,14 +486,16 @@ h1 {
 }
 
 .composer button {
-  height: 46px;
-  padding: 0 16px;
+  height: 38px;
+  padding: 0 15px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   color: #ffffff;
   background: linear-gradient(180deg, var(--action-start), var(--action-deep));
+  font-size: 14px;
+  font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 10px 20px var(--action-shadow);
+  box-shadow: 0 7px 16px var(--action-shadow);
   transition:
     background-color 140ms ease,
     transform 140ms ease;
@@ -511,15 +513,15 @@ h1 {
 }
 
 .status-message {
-  min-height: 18px;
-  margin: -2px 0 0;
+  flex: 0 0 auto;
+  margin: -5px 0 -4px;
   color: var(--text-soft);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .status-message:empty {
-  visibility: hidden;
+  display: none;
 }
 
 .status-message.is-error {
@@ -637,29 +639,19 @@ h1 {
   flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 2px 8px 4px 2px;
+  padding: 2px 0 4px 2px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgb(31 128 109 / 32%) transparent;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   list-style: none;
 }
 
 .task-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.task-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.task-list::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: rgb(31 128 109 / 32%);
-  background-clip: content-box;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .task-list[hidden],
@@ -682,10 +674,10 @@ h1 {
   position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  grid-template-columns: 26px minmax(0, 1fr) 30px;
   width: 100%;
   min-width: 0;
-  gap: 10px;
+  gap: 9px;
   align-items: center;
   min-height: 54px;
   padding: 10px 10px 10px 12px;
@@ -698,7 +690,7 @@ h1 {
   box-shadow:
     inset var(--task-rail-width) 0 0 var(--task-accent),
     0 6px 14px var(--task-accent-shadow);
-  overflow: hidden;
+  overflow: visible;
   transition:
     background-color 140ms ease,
     border-color 140ms ease,
@@ -874,8 +866,8 @@ h1 {
 }
 
 .task-toggle {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: rgb(255 253 246 / 88%);
   box-shadow:
@@ -884,8 +876,8 @@ h1 {
 }
 
 .task-toggle::after {
-  width: 12px;
-  height: 7px;
+  width: 10px;
+  height: 6px;
   border: solid transparent;
   border-width: 0 0 2px 2px;
   content: "";
@@ -946,47 +938,87 @@ h1 {
   animation: task-strike 920ms cubic-bezier(0.25, 0.9, 0.25, 1) both;
 }
 
-.task-meta {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
 .task-importance {
-  display: inline-grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 2px;
+  position: absolute;
+  top: 50%;
+  right: 42px;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: repeat(3, 12px);
+  gap: 5px;
+  align-items: center;
+  justify-items: center;
+  padding: 5px;
   border: 1px solid var(--importance-group-line);
   border-radius: 999px;
   background:
-    linear-gradient(90deg, var(--importance-group-wash), transparent 74%),
-    rgb(255 253 246 / 78%);
+    linear-gradient(180deg, rgb(255 253 246 / 84%), rgb(255 250 238 / 76%)),
+    var(--importance-group-wash);
+  box-shadow:
+    0 7px 16px var(--task-accent-shadow),
+    inset 0 1px 0 rgb(255 255 255 / 64%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(4px, -50%) scale(0.96);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 140ms ease;
+  visibility: hidden;
+}
+
+.task-item:hover .task-importance,
+.task-item:focus-within .task-importance {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%) scale(1);
+  visibility: visible;
 }
 
 .priority-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  height: 22px;
-  padding: 0 8px 0 6px;
-  border: 1px solid transparent;
+  position: relative;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
-  color: var(--text-soft);
-  font-size: 11px;
+  color: transparent;
+  background: var(--priority-color);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 253 246 / 68%),
+    0 1px 4px var(--priority-shadow);
+  font-size: 0;
   line-height: 1;
+}
+
+.priority-button::after {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 8px);
+  z-index: 4;
+  padding: 4px 7px;
+  border: 1px solid var(--priority-line);
+  border-radius: 999px;
+  color: var(--priority-active);
+  background: rgb(255 253 246 / 94%);
+  box-shadow: 0 5px 12px var(--priority-shadow);
+  content: attr(data-label);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(4px, -50%);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
   white-space: nowrap;
 }
 
 .priority-button::before {
-  width: 6px;
-  height: 6px;
-  margin-right: 5px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 2px transparent;
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
   content: "";
 }
 
@@ -1020,31 +1052,28 @@ h1 {
   --priority-shadow: rgb(169 71 58 / 12%);
 }
 
-.priority-button::before {
-  background: var(--priority-color);
-}
-
-.priority-button:hover {
-  border-color: var(--priority-hover-line);
-  background: var(--priority-soft);
-  color: var(--text-main);
-  transform: translateY(-1px);
+.priority-button:hover,
+.priority-button:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px rgb(255 253 246 / 82%),
+    0 0 0 4px var(--priority-ring),
+    0 3px 8px var(--priority-shadow);
+  outline: none;
+  transform: scale(1.12);
 }
 
 .priority-button.is-active {
-  border-color: var(--priority-line);
-  color: var(--priority-active);
-  background:
-    linear-gradient(180deg, rgb(255 253 246 / 42%), transparent),
-    var(--priority-soft);
+  background: var(--priority-color);
   box-shadow:
-    inset 0 0 0 1px rgb(255 253 246 / 64%),
-    0 2px 6px var(--priority-shadow);
-  font-weight: 800;
+    inset 0 0 0 2px rgb(255 253 246 / 88%),
+    0 0 0 3px var(--priority-ring),
+    0 2px 7px var(--priority-shadow);
 }
 
-.priority-button.is-active::before {
-  box-shadow: 0 0 0 2px var(--priority-ring);
+.priority-button:hover::after,
+.priority-button:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
 }
 
 .task-item.is-done .priority-button {
@@ -1053,7 +1082,9 @@ h1 {
 
 .task-item.is-done .priority-button.is-active {
   opacity: 0.9;
-  box-shadow: inset 0 0 0 1px rgb(255 253 246 / 54%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 253 246 / 72%),
+    0 0 0 3px var(--priority-ring);
 }
 
 .task-delete {
@@ -1264,7 +1295,7 @@ h1 {
   .note-header {
     grid-template-columns: 34px minmax(0, 1fr) 34px;
     column-gap: 8px;
-    min-height: 82px;
+    min-height: 68px;
   }
 
   h1,
@@ -1297,21 +1328,20 @@ h1 {
     padding-inline: 8px 6px;
   }
 
-  .composer {
-    grid-template-columns: 1fr;
-  }
-
   .task-item {
-    grid-template-columns: 28px minmax(0, 1fr) 28px;
+    grid-template-columns: 24px minmax(0, 1fr) 28px;
+    gap: 8px;
     padding: 10px;
   }
 
   .task-importance {
-    gap: 3px;
+    right: 38px;
+    grid-template-rows: repeat(3, 11px);
+    gap: 4px;
   }
 
   .priority-button {
-    min-width: 30px;
-    padding-inline: 5px;
+    width: 11px;
+    height: 11px;
   }
 }

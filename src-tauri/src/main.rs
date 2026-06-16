@@ -1,3 +1,3 @@
 fn main() {
-    daynote_lib::run();
+    dailyseq_lib::run();
 }

@@ -12,13 +12,13 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_SHOW_HIDE_ID: &str = "show_hide";
 const TRAY_QUIT_ID: &str = "quit";
-const STORAGE_FILE_NAME: &str = "daynote.json";
+const STORAGE_FILE_NAME: &str = "dailyseq.json";
 const DEFAULT_THEME: &str = "jade";
 const DEFAULT_IMPORTANCE: &str = "medium";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DaynoteData {
+struct DailySeqData {
     #[serde(default)]
     days: BTreeMap<String, DayPlan>,
     #[serde(default)]
@@ -60,7 +60,7 @@ struct Settings {
     theme: String,
 }
 
-impl Default for DaynoteData {
+impl Default for DailySeqData {
     fn default() -> Self {
         Self {
             days: BTreeMap::new(),
@@ -79,7 +79,7 @@ impl Default for Settings {
     }
 }
 
-impl DaynoteData {
+impl DailySeqData {
     fn repaired(mut self) -> Self {
         if self.settings.theme.trim().is_empty() {
             self.settings.theme = DEFAULT_THEME.to_string();
@@ -134,21 +134,21 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            load_daynote_data,
-            save_daynote_data,
+            load_dailyseq_data,
+            save_dailyseq_data,
             hide_main_window
         ])
         .setup(|app| {
             build_tray(app.handle())?;
             if let Err(error) = register_global_shortcut(app.handle()) {
-                eprintln!("failed to register DayNote global shortcut: {error}");
+                eprintln!("failed to register DailySeq global shortcut: {error}");
             }
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_SHOW_HIDE_ID => {
                 if let Err(error) = toggle_main_window(app) {
-                    eprintln!("failed to toggle DayNote window: {error}");
+                    eprintln!("failed to toggle DailySeq window: {error}");
                 }
             }
             TRAY_QUIT_ID => app.exit(0),
@@ -159,46 +159,46 @@ pub fn run() {
                 api.prevent_close();
 
                 if let Err(error) = window.hide() {
-                    eprintln!("failed to hide DayNote window: {error}");
+                    eprintln!("failed to hide DailySeq window: {error}");
                 }
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running DayNote");
+        .expect("error while running DailySeq");
 }
 
 #[tauri::command]
-fn load_daynote_data(app: AppHandle<Wry>) -> Result<DaynoteData, String> {
+fn load_dailyseq_data(app: AppHandle<Wry>) -> Result<DailySeqData, String> {
     let path = storage_path(&app)?;
 
     if !path.exists() {
-        return Ok(DaynoteData::default());
+        return Ok(DailySeqData::default());
     }
 
     let contents = fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read DayNote data file: {error}"))?;
+        .map_err(|error| format!("failed to read DailySeq data file: {error}"))?;
 
     if contents.trim().is_empty() {
-        return Ok(DaynoteData::default());
+        return Ok(DailySeqData::default());
     }
 
-    serde_json::from_str::<DaynoteData>(&contents)
-        .map(DaynoteData::repaired)
-        .map_err(|error| format!("failed to parse DayNote data file: {error}"))
+    serde_json::from_str::<DailySeqData>(&contents)
+        .map(DailySeqData::repaired)
+        .map_err(|error| format!("failed to parse DailySeq data file: {error}"))
 }
 
 #[tauri::command]
-fn save_daynote_data(app: AppHandle<Wry>, data: DaynoteData) -> Result<DaynoteData, String> {
+fn save_dailyseq_data(app: AppHandle<Wry>, data: DailySeqData) -> Result<DailySeqData, String> {
     let repaired = data.repaired();
     let path = storage_path(&app)?;
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create DayNote data directory: {error}"))?;
+            .map_err(|error| format!("failed to create DailySeq data directory: {error}"))?;
     }
 
     let contents = serde_json::to_string_pretty(&repaired)
-        .map_err(|error| format!("failed to serialize DayNote data: {error}"))?;
+        .map_err(|error| format!("failed to serialize DailySeq data: {error}"))?;
 
     let temp_path = write_synced_temp_file(&path, contents.as_bytes())?;
     replace_data_file(&temp_path, &path)?;
@@ -214,16 +214,16 @@ fn hide_main_window(app: AppHandle<Wry>) -> Result<(), String> {
 
     window
         .hide()
-        .map_err(|error| format!("隐藏 DayNote 窗口失败：{error}"))
+        .map_err(|error| format!("隐藏 DailySeq 窗口失败：{error}"))
 }
 
 fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf, String> {
     let parent = target_path
         .parent()
-        .ok_or_else(|| "failed to resolve DayNote data directory".to_string())?;
+        .ok_or_else(|| "failed to resolve DailySeq data directory".to_string())?;
     let file_name = target_path
         .file_name()
-        .ok_or_else(|| "failed to resolve DayNote data file name".to_string())?
+        .ok_or_else(|| "failed to resolve DailySeq data file name".to_string())?
         .to_string_lossy();
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -244,7 +244,7 @@ fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf
             Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
             Err(error) => {
                 return Err(format!(
-                    "failed to create temporary DayNote data file: {error}"
+                    "failed to create temporary DailySeq data file: {error}"
                 ))
             }
         };
@@ -253,7 +253,7 @@ fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf
             .write_all(contents)
             .and_then(|()| file.flush())
             .and_then(|()| file.sync_all())
-            .map_err(|error| format!("failed to write temporary DayNote data file: {error}"));
+            .map_err(|error| format!("failed to write temporary DailySeq data file: {error}"));
         drop(file);
 
         if let Err(error) = write_result {
@@ -264,33 +264,33 @@ fn write_synced_temp_file(target_path: &Path, contents: &[u8]) -> Result<PathBuf
         return Ok(temp_path);
     }
 
-    Err("failed to create a unique temporary DayNote data file".to_string())
+    Err("failed to create a unique temporary DailySeq data file".to_string())
 }
 
 #[cfg(not(target_os = "windows"))]
 fn replace_data_file(temp_path: &Path, target_path: &Path) -> Result<(), String> {
     fs::rename(temp_path, target_path)
-        .map_err(|error| format!("failed to replace DayNote data file: {error}"))
+        .map_err(|error| format!("failed to replace DailySeq data file: {error}"))
 }
 
 #[cfg(target_os = "windows")]
 fn replace_data_file(temp_path: &Path, target_path: &Path) -> Result<(), String> {
     if !target_path
         .try_exists()
-        .map_err(|error| format!("failed to inspect DayNote data file: {error}"))?
+        .map_err(|error| format!("failed to inspect DailySeq data file: {error}"))?
     {
         return fs::rename(temp_path, target_path)
-            .map_err(|error| format!("failed to install DayNote data file: {error}"));
+            .map_err(|error| format!("failed to install DailySeq data file: {error}"));
     }
 
     let backup_path = backup_path_for(target_path)?;
 
     if backup_path
         .try_exists()
-        .map_err(|error| format!("failed to inspect DayNote data backup: {error}"))?
+        .map_err(|error| format!("failed to inspect DailySeq data backup: {error}"))?
     {
         fs::remove_file(&backup_path)
-            .map_err(|error| format!("failed to remove previous DayNote data backup: {error}"))?;
+            .map_err(|error| format!("failed to remove previous DailySeq data backup: {error}"))?;
     }
 
     replace_existing_file_windows(target_path, temp_path, &backup_path)
@@ -300,7 +300,7 @@ fn replace_data_file(temp_path: &Path, target_path: &Path) -> Result<(), String>
 fn backup_path_for(target_path: &Path) -> Result<PathBuf, String> {
     let mut backup_name = target_path
         .file_name()
-        .ok_or_else(|| "failed to resolve DayNote data backup name".to_string())?
+        .ok_or_else(|| "failed to resolve DailySeq data backup name".to_string())?
         .to_os_string();
     backup_name.push(".bak");
 
@@ -350,7 +350,7 @@ fn replace_existing_file_windows(
 
     if succeeded == 0 {
         return Err(format!(
-            "failed to replace DayNote data file: {}",
+            "failed to replace DailySeq data file: {}",
             std::io::Error::last_os_error()
         ));
     }
@@ -362,7 +362,7 @@ fn storage_path(app: &AppHandle<Wry>) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|directory| directory.join(STORAGE_FILE_NAME))
-        .map_err(|error| format!("failed to resolve DayNote data directory: {error}"))
+        .map_err(|error| format!("failed to resolve DailySeq data directory: {error}"))
 }
 
 fn default_importance() -> String {
@@ -392,7 +392,7 @@ fn register_global_shortcut(app: &AppHandle<Wry>) -> tauri::Result<()> {
         .on_shortcut(shortcut, move |_app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
                 if let Err(error) = toggle_main_window(&app_handle) {
-                    eprintln!("failed to toggle DayNote window from shortcut: {error}");
+                    eprintln!("failed to toggle DailySeq window from shortcut: {error}");
                 }
             }
         })
@@ -405,15 +405,15 @@ fn build_tray(app: &AppHandle<Wry>) -> tauri::Result<()> {
     let show_hide = MenuItem::with_id(
         app,
         TRAY_SHOW_HIDE_ID,
-        "Show/Hide DayNote",
+        "Show/Hide DailySeq",
         true,
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_hide, &quit])?;
 
-    TrayIconBuilder::with_id("daynote")
-        .tooltip("DayNote")
+    TrayIconBuilder::with_id("dailyseq")
+        .tooltip("DailySeq")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
@@ -424,7 +424,7 @@ fn build_tray(app: &AppHandle<Wry>) -> tauri::Result<()> {
             } = event
             {
                 if let Err(error) = toggle_main_window(tray.app_handle()) {
-                    eprintln!("failed to toggle DayNote window from tray: {error}");
+                    eprintln!("failed to toggle DailySeq window from tray: {error}");
                 }
             }
         })

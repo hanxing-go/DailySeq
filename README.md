@@ -1,13 +1,13 @@
-# DayNote
+# DailySeq
 
-DayNote is a lightweight desktop sticky-note planner built with Tauri 2, Rust, and a Vanilla TypeScript/Vite front end.
+DailySeq is a lightweight desktop sticky-note planner built with Tauri 2, Rust, and a Vanilla TypeScript/Vite front end.
 
 ## What It Does
 
 - Summon or hide a compact always-on-top note panel with one global shortcut.
 - Plan daily, weekly, and monthly TODOs bound to the currently viewed date.
 - Add, complete, delete, prioritize, and manually reorder tasks.
-- Persist local data in the Tauri app data directory as `daynote.json`.
+- Persist local data in the Tauri app data directory as `dailyseq.json`.
 - Protect existing data by blocking edits while the data file is loading or if it cannot be parsed.
 - Stay resident in the tray/menu bar so closing the panel hides it instead of quitting.
 - Show small one-shot interaction polish, including add/complete feedback and an all-done reward.
@@ -21,13 +21,13 @@ DayNote is a lightweight desktop sticky-note planner built with Tauri 2, Rust, a
 - Storage: local JSON managed by the Tauri Rust side
 - Target platforms: Windows, macOS, and Linux desktop
 
-Released users should download the installer or app bundle for their platform. They do not need Rust, Node.js, npm, or this repository unless they want to develop or package DayNote themselves.
+Released users should download the installer or app bundle for their platform. They do not need Rust, Node.js, npm, or this repository unless they want to develop or package DailySeq themselves.
 
 ## Default Shortcuts
 
-- `Ctrl+Alt+D`: show or hide DayNote on Windows/Linux.
-- `Command+Option+D`: show or hide DayNote on macOS.
-- `Esc`: hide the visible DayNote window to the tray/menu bar.
+- `Ctrl+Alt+D`: show or hide DailySeq on Windows/Linux.
+- `Command+Option+D`: show or hide DailySeq on macOS.
+- `Esc`: hide the visible DailySeq window to the tray/menu bar.
 - `Ctrl+Enter`: add the typed task.
 - `Alt+Left` / `Alt+Right`: move to the previous / next day, week, or month for the active plan view when focus is not in a text field.
 - `Space`: toggle a focused task.
@@ -121,7 +121,7 @@ npm run build:desktop
 npm run tauri:build
 ```
 
-Tauri packages for the platform it is running on. Build macOS packages on macOS, Linux packages on Linux, and Windows packages on Windows or a Windows CI runner. Cross-compiling is possible for some targets, but DayNote treats native platform builds or CI jobs as the normal release path.
+Tauri packages for the platform it is running on. Build macOS packages on macOS, Linux packages on Linux, and Windows packages on Windows or a Windows CI runner. Cross-compiling is possible for some targets, but DailySeq treats native platform builds or CI jobs as the normal release path.
 
 ### Windows Output
 
@@ -137,8 +137,8 @@ src-tauri/target/release/bundle/nsis/
 Typical file names are similar to:
 
 ```text
-DayNote_0.1.0_x64_en-US.msi
-DayNote_0.1.0_x64-setup.exe
+DailySeq_0.1.0_x64_en-US.msi
+DailySeq_0.1.0_x64-setup.exe
 ```
 
 The exact architecture or locale segment can vary by host and Tauri configuration.
@@ -166,30 +166,30 @@ To also build installers after verification:
 - The main window is a compact always-on-top note panel.
 - The window is transparent, undecorated, and draggable from the panel edge and blank shell areas.
 - Buttons, text fields, task cards, importance controls, delete/complete controls, and the task list scrollbar keep their normal interactions instead of starting a window drag.
-- Closing the window hides it so DayNote can remain resident in the tray/menu bar.
+- Closing the window hides it so DailySeq can remain resident in the tray/menu bar.
 - Use the top-left close button or `Esc` to hide the visible window to the tray/menu bar.
 - The tray/menu-bar entry supports show/hide and quit.
 - The global shortcut is `Ctrl+Alt+D` on Windows/Linux. On macOS, the Rust registration maps to `Command+Option+D`, matching the platform preference from `docs/DEVELOPMENT.md`.
 
 ## Plan Storage
 
-- Plans are persisted as JSON in the Tauri app data directory, under `daynote.json`.
-- Saves write a synced temporary file in the same directory before replacing `daynote.json`, so the existing data file is not truncated before the new JSON is complete.
-- While DayNote is initially loading `daynote.json`, editing and saving are locked so empty in-memory data cannot overwrite the existing file.
-- If DayNote cannot load or parse the existing data file, the UI blocks editing and saving with a Chinese error message instead of overwriting the file with empty or new data.
+- Plans are persisted as JSON in the Tauri app data directory, under `dailyseq.json`.
+- Saves write a synced temporary file in the same directory before replacing `dailyseq.json`, so the existing data file is not truncated before the new JSON is complete.
+- While DailySeq is initially loading `dailyseq.json`, editing and saving are locked so empty in-memory data cannot overwrite the existing file.
+- If DailySeq cannot load or parse the existing data file, the UI blocks editing and saving with a Chinese error message instead of overwriting the file with empty or new data.
 - Tasks are stored under local ISO date keys in the `days` map, Monday week-start ISO keys in the `weeks` map, and `YYYY-MM` keys in the `months` map.
 - Older data files that only contain `days` remain valid; missing `weeks` and `months` maps are repaired in memory before saving.
 - New tasks use `importance: "low"` by default.
 - Add, toggle complete, delete, importance changes, and manual ordering all apply to the active day, week, or month plan.
-- Keyboard support: `Esc` hides DayNote to the tray/menu bar, `Ctrl+Enter` adds the typed task, `Alt+Left` / `Alt+Right` move to the previous / next day, week, or month for the active plan view when focus is not in a text field, `Space` toggles a focused task, `Delete` removes a focused task, and `Ctrl+1` / `Ctrl+2` / `Ctrl+3` set focused task importance to low / medium / high.
+- Keyboard support: `Esc` hides DailySeq to the tray/menu bar, `Ctrl+Enter` adds the typed task, `Alt+Left` / `Alt+Right` move to the previous / next day, week, or month for the active plan view when focus is not in a text field, `Space` toggles a focused task, `Delete` removes a focused task, and `Ctrl+1` / `Ctrl+2` / `Ctrl+3` set focused task importance to low / medium / high.
 
 ## Importance and Ordering
 
 - Each task has a lightweight low / medium / high importance control shown directly on the task row.
 - Click an importance segment to save that level immediately and regroup unfinished tasks by high, medium, then low importance.
 - Completed tasks stay below unfinished tasks. Newly completed tasks enter the top of the completed section, so earlier completed tasks settle lower.
-- Drag a task row and drop it above or below another task in the same completion section to change its manual order. DayNote resequences the `order` field and persists the new order after the drop.
-- If loading `daynote.json` fails, importance controls and drag sorting are disabled along with other editing actions to protect the existing file from being overwritten.
+- Drag a task row and drop it above or below another task in the same completion section to change its manual order. DailySeq resequences the `order` field and persists the new order after the drop.
+- If loading `dailyseq.json` fails, importance controls and drag sorting are disabled along with other editing actions to protect the existing file from being overwritten.
 
 ## Date Navigation
 
@@ -199,10 +199,10 @@ To also build installers after verification:
 - In Week view, the same controls move by one week and the title shows the bound week range. The week key is the local Monday start date.
 - In Month view, the same controls move by one month and the title shows the bound month.
 - Use the compact Today button to jump back to today's date, week, or month, and use the date picker to choose any local calendar date.
-- Future planning and past review use the same task operations as today. Empty days, weeks, and months are not written into `daynote.json` just because they were viewed; a plan is saved only after its tasks are changed.
+- Future planning and past review use the same task operations as today. Empty days, weeks, and months are not written into `dailyseq.json` just because they were viewed; a plan is saved only after its tasks are changed.
 
 ## UI Polish
 
 - The fixed theme uses a warm paper-like surface with jade accents and restrained cinnabar / gold highlights.
 - Adding a task gives a brief entry highlight, and completing a task gives a short check bounce plus a light sheen.
-- When the active plan reaches all done for the first time, DayNote shows a one-shot stamp-and-spark reward above the list using the current plan label. The add / complete feedback clears in place so keyboard focus stays on the same task.
+- When the active plan reaches all done for the first time, DailySeq shows a one-shot stamp-and-spark reward above the list using the current plan label. The add / complete feedback clears in place so keyboard focus stays on the same task.

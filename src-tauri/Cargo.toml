@@ -1,13 +1,13 @@
 [package]
-name = "daynote"
+name = "dailyseq"
 version = "0.1.0"
 description = "A lightweight desktop sticky-note planner."
-authors = ["DayNote contributors"]
+authors = ["DailySeq contributors"]
 edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "daynote_lib"
+name = "dailyseq_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
