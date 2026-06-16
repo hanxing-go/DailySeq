@@ -49,9 +49,8 @@ body {
 }
 
 body {
-  display: grid;
-  place-items: center;
-  padding: 4px;
+  display: block;
+  padding: 0;
 }
 
 button,
@@ -66,7 +65,7 @@ button:disabled {
 .note-shell {
   position: relative;
   isolation: isolate;
-  width: min(100%, 380px);
+  width: 100%;
   height: 100%;
   min-height: min(440px, 100%);
   max-height: 100%;
@@ -83,7 +82,6 @@ button:disabled {
     linear-gradient(0deg, rgb(169 71 58 / 3%) 1px, transparent 1px) 0 0 / 18px 18px,
     linear-gradient(155deg, var(--paper-soft), var(--paper) 54%, var(--paper-deep));
   box-shadow:
-    0 20px 44px rgb(49 43 31 / 17%),
     inset 0 1px 0 rgb(255 255 255 / 86%);
   transition:
     border-color 180ms ease,
@@ -111,8 +109,7 @@ button:disabled {
 .note-shell.is-rewarding {
   border-color: rgb(200 144 46 / 54%);
   box-shadow:
-    0 22px 48px rgb(49 43 31 / 18%),
-    0 0 0 5px rgb(200 144 46 / 8%),
+    inset 0 0 0 5px rgb(200 144 46 / 8%),
     inset 0 1px 0 rgb(255 255 255 / 86%);
 }
 
@@ -999,7 +996,7 @@ h1 {
 
 @media (max-width: 360px) {
   body {
-    padding: 4px;
+    padding: 0;
   }
 
   .note-shell {
