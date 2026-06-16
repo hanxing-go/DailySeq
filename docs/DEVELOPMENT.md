@@ -148,6 +148,7 @@ Each milestone must be implemented and committed separately.
 - In Week view, the current `viewedDate` is bound to its local Monday-start week key. Previous / next navigation moves the anchor date by seven days.
 - In Month view, the current `viewedDate` is bound to its `YYYY-MM` month key. Previous / next navigation moves the anchor date by one month and clamps month-end dates to valid days.
 - Switching back to Day view shows the current anchor date selected by prior week/month navigation.
+- The compact Today button jumps the shared anchor date back to today, and the date picker selects any local calendar date for the active day, week, or month view.
 - Viewing an empty past or future day, week, or month does not create a new saved plan until the user edits that plan.
 - When load failure protection is active, users can still browse dates and read empty states, but task edits, ordering, and saves remain blocked.
 

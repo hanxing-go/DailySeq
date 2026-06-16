@@ -197,6 +197,7 @@ To also build installers after verification:
 - In Day view, the left and right header buttons, or `Alt+Left` / `Alt+Right`, move by one day.
 - In Week view, the same controls move by one week and the title shows the bound week range. The week key is the local Monday start date.
 - In Month view, the same controls move by one month and the title shows the bound month.
+- Use the compact Today button to jump back to today's date, week, or month, and use the date picker to choose any local calendar date.
 - Future planning and past review use the same task operations as today. Empty days, weeks, and months are not written into `daynote.json` just because they were viewed; a plan is saved only after its tasks are changed.
 
 ## UI Polish

@@ -79,6 +79,8 @@ const noteShellElement = requireElement<HTMLElement>("#app");
 const scopeTabElements = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-plan-scope]"));
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
+const todayButtonElement = requireElement<HTMLButtonElement>("#today-button");
+const datePickerElement = requireElement<HTMLInputElement>("#date-picker");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
 const nextDayButtonElement = requireElement<HTMLButtonElement>("#next-day");
 const hideToTrayButtonElement = requireElement<HTMLButtonElement>("#hide-to-tray");
@@ -130,6 +132,14 @@ previousDayButtonElement.addEventListener("click", () => {
 
 nextDayButtonElement.addEventListener("click", () => {
   navigatePlan(1);
+});
+
+todayButtonElement.addEventListener("click", () => {
+  goToToday();
+});
+
+datePickerElement.addEventListener("change", () => {
+  goToPickedDate(datePickerElement.value);
 });
 
 hideToTrayButtonElement.addEventListener("click", () => {
@@ -609,7 +619,34 @@ function navigatePlan(offset: number) {
     return;
   }
 
-  viewedDate = addPlanOffset(viewedDate, currentPlanScope, offset);
+  setViewedDate(addPlanOffset(viewedDate, currentPlanScope, offset));
+}
+
+function goToToday() {
+  if (isLoading || isSaving) {
+    return;
+  }
+
+  setViewedDate(new Date());
+}
+
+function goToPickedDate(value: string) {
+  if (isLoading || isSaving) {
+    return;
+  }
+
+  const pickedDate = parseIsoDateInput(value);
+
+  if (!pickedDate) {
+    datePickerElement.value = viewedDateKey;
+    return;
+  }
+
+  setViewedDate(pickedDate);
+}
+
+function setViewedDate(date: Date) {
+  viewedDate = startOfLocalDay(date);
   viewedDateKey = toIsoDate(viewedDate);
   focusedTaskId = null;
   if (!isLoadBlocked) {
@@ -708,6 +745,10 @@ function renderDateHeader() {
   previousDayButtonElement.title = getNavigationLabel(-1);
   nextDayButtonElement.setAttribute("aria-label", getNavigationLabel(1));
   nextDayButtonElement.title = getNavigationLabel(1);
+  todayButtonElement.disabled = isLoading || isSaving || getDayOffset(viewedDate) === 0;
+  todayButtonElement.title = currentPlanScope === "day" ? "回到今天" : "回到今天所在计划";
+  todayButtonElement.setAttribute("aria-label", todayButtonElement.title);
+  datePickerElement.value = viewedDateKey;
 
   if (currentPlanScope === "week") {
     weekdayElement.textContent = formatWeekRange(viewedDate);
@@ -1201,6 +1242,25 @@ function toIsoDate(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function parseIsoDateInput(value: string) {
+  const match = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/.exec(value);
+
+  if (!match?.groups) {
+    return null;
+  }
+
+  const year = Number(match.groups.year);
+  const monthIndex = Number(match.groups.month) - 1;
+  const day = Number(match.groups.day);
+  const date = new Date(year, monthIndex, day);
+
+  if (date.getFullYear() !== year || date.getMonth() !== monthIndex || date.getDate() !== day) {
+    return null;
+  }
+
+  return date;
 }
 
 function startOfLocalDay(date: Date) {
