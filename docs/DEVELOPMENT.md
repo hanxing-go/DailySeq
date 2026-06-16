@@ -82,7 +82,7 @@ Persist plans by day, week, and month keys:
 }
 ```
 
-The `days` map uses local ISO date keys. The `weeks` map uses the local Monday start date for the viewed week, and the `months` map uses `YYYY-MM`. The app should tolerate missing or older fields, including old data that only has `days`, and repair them in memory before saving. Importance defaults to `low` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows completion state, importance, and stored order.
+The `days` map uses local ISO date keys. The `weeks` map uses the local Monday start date for the viewed week, and the `months` map uses `YYYY-MM`. The app should tolerate missing or older fields, including old data that only has `days`, and repair them in memory before saving. Importance defaults to `low` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows completion state, unfinished-task importance, and stored order. Newly completed tasks are inserted at the top of the completed section.
 
 ## Feature Milestones
 
@@ -108,7 +108,7 @@ Each milestone must be implemented and committed separately.
    - Quick controls.
    - Keyboard shortcuts.
    - Drag reorder.
-   - The list order follows saved `order` only.
+   - The list order follows completion state, unfinished-task importance, then saved `order`.
    - Loading failures must block editing, importance changes, and drag saves.
 
 4. Date navigation.

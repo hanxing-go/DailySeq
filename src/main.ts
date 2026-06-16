@@ -13,6 +13,8 @@ const WEEK_IN_MS = 7 * DAY_IN_MS;
 const DRAG_START_THRESHOLD = 6;
 const DRAG_SCROLL_EDGE_SIZE = 42;
 const DRAG_SCROLL_MAX_STEP = 14;
+const TASK_COMPLETION_FEEDBACK_MS = 1200;
+const TASK_LAYOUT_ANIMATION_MS = 620;
 const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const REWARD_SPARKS = [
@@ -31,6 +33,11 @@ const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
   medium: "中",
   high: "高",
+};
+const IMPORTANCE_SORT_ORDER: Record<Importance, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
 };
 
 interface Task {
@@ -425,8 +432,10 @@ async function toggleTask(taskId: string | null) {
   }
 
   const wasAllDone = getRecordedAllDoneState();
+  const taskLayoutBeforeToggle = captureTaskLayout();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
+  task.order = task.done ? getPreviousOrderInGroup(getViewedTasks(), true, task.id) : getNextOrderInGroup(getViewedTasks(), false, task.importance, task.id);
   sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   if (task.done) {
@@ -435,8 +444,11 @@ async function toggleTask(taskId: string | null) {
     clearCompletedFeedback();
   }
   render();
+  animateTaskLayoutFrom(taskLayoutBeforeToggle);
   const shouldReward = recordAllDoneTransition(wasAllDone);
-  const saved = await persist(shouldReward ? formatAllDoneSaveStatus() : task.done ? "已完成" : "已恢复");
+  const saved = await persist(shouldReward ? formatAllDoneSaveStatus() : task.done ? "已完成" : "已恢复", {
+    rerender: false,
+  });
   if (saved && shouldReward) {
     triggerAllDoneReward();
   }
@@ -498,7 +510,7 @@ async function deleteTask(taskId: string | null) {
   }
 }
 
-async function persist(successMessage: string) {
+async function persist(successMessage: string, options: { rerender?: boolean } = {}) {
   if (isLoading || isLoadBlocked) {
     return false;
   }
@@ -517,7 +529,9 @@ async function persist(successMessage: string) {
   } finally {
     isSaving = false;
     updateBusyState();
-    render();
+    if (options.rerender !== false) {
+      render();
+    }
   }
 }
 
@@ -884,7 +898,7 @@ function markTaskAsCompleted(taskId: string) {
   recentlyCompletedTaskId = taskId;
   completeFeedbackTimer = window.setTimeout(() => {
     clearCompletedFeedback();
-  }, 720);
+  }, TASK_COMPLETION_FEEDBACK_MS);
 }
 
 function clearAddedFeedback() {
@@ -1170,6 +1184,10 @@ function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosi
     return false;
   }
 
+  if (!tasksBelongToSameOrderGroup(tasks[fromIndex], tasks[targetIndex])) {
+    return false;
+  }
+
   if (position === "before" && fromIndex === targetIndex - 1) {
     return false;
   }
@@ -1203,12 +1221,50 @@ function sortAndResequenceTasks(tasks: Task[]) {
   resequenceTasks(tasks);
 }
 
-function compareTasksByListOrder(first: Pick<Task, "order">, second: Pick<Task, "order">) {
+function compareTasksByListOrder(first: Pick<Task, "done" | "importance" | "order">, second: Pick<Task, "done" | "importance" | "order">) {
+  if (first.done !== second.done) {
+    return first.done ? 1 : -1;
+  }
+
+  if (!first.done) {
+    const importanceDelta = IMPORTANCE_SORT_ORDER[first.importance] - IMPORTANCE_SORT_ORDER[second.importance];
+
+    if (importanceDelta !== 0) {
+      return importanceDelta;
+    }
+  }
+
   return first.order - second.order;
+}
+
+function tasksBelongToSameOrderGroup(first: Task, second: Task) {
+  if (first.done || second.done) {
+    return first.done === second.done;
+  }
+
+  return first.importance === second.importance;
 }
 
 function getNextOrder(tasks: Task[]) {
   return tasks.reduce((nextOrder, task) => Math.max(nextOrder, task.order + 1), 0);
+}
+
+function getNextOrderInGroup(tasks: Task[], done: boolean, importance: Importance, ignoredTaskId: string | null = null) {
+  return tasks.reduce((nextOrder, task) => {
+    if (task.id === ignoredTaskId || task.done !== done || (!done && task.importance !== importance)) {
+      return nextOrder;
+    }
+
+    return Math.max(nextOrder, task.order + 1);
+  }, 0);
+}
+
+function getPreviousOrderInGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
+  const groupOrders = tasks
+    .filter((task) => task.id !== ignoredTaskId && task.done === done)
+    .map((task) => task.order);
+
+  return groupOrders.length > 0 ? Math.min(...groupOrders) - 1 : 0;
 }
 
 function createEmptyData(): DaynoteData {
@@ -1498,6 +1554,55 @@ function focusTask(taskId: string) {
   });
 }
 
+function captureTaskLayout() {
+  const layout = new Map<string, DOMRect>();
+
+  taskListElement.querySelectorAll<HTMLElement>("[data-task-id]").forEach((item) => {
+    const taskId = item.dataset.taskId;
+
+    if (taskId) {
+      layout.set(taskId, item.getBoundingClientRect());
+    }
+  });
+
+  return layout;
+}
+
+function animateTaskLayoutFrom(previousLayout: Map<string, DOMRect>) {
+  if (previousLayout.size === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    taskListElement.querySelectorAll<HTMLElement>("[data-task-id]").forEach((item) => {
+      const taskId = item.dataset.taskId;
+      const previousRect = taskId ? previousLayout.get(taskId) : null;
+
+      if (!previousRect) {
+        return;
+      }
+
+      const nextRect = item.getBoundingClientRect();
+      const deltaY = previousRect.top - nextRect.top;
+
+      if (Math.abs(deltaY) < 1) {
+        return;
+      }
+
+      item.animate(
+        [
+          { translate: `0 ${deltaY}px`, offset: 0 },
+          { translate: "0 0", offset: 1 },
+        ],
+        {
+          duration: TASK_LAYOUT_ANIMATION_MS,
+          easing: "cubic-bezier(0.2, 0.85, 0.2, 1)",
+        },
+      );
+    });
+  });
+}
+
 function beginTaskDrag(candidate: TaskDragCandidate, event: PointerEvent) {
   draggedTaskId = candidate.taskId;
   dropTargetTaskId = null;
@@ -1576,12 +1681,17 @@ function setDropTargetFromPoint(clientY: number) {
 }
 
 function resolveDropTargetFromPoint(clientY: number) {
-  if (!draggedTaskId) {
+  const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
+
+  if (!draggedTask) {
     return null;
   }
 
   const taskItems = Array.from(taskListElement.querySelectorAll<HTMLElement>("[data-task-id]")).filter((item) => {
-    return item.dataset.taskId !== draggedTaskId;
+    const taskId = item.dataset.taskId ?? "";
+    const task = findTask(taskId);
+
+    return task && task.id !== draggedTask.id && tasksBelongToSameOrderGroup(task, draggedTask);
   });
 
   if (taskItems.length === 0) {

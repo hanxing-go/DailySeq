@@ -6,16 +6,11 @@
     <title>DayNote</title>
   </head>
   <body>
-    <main id="app" class="note-shell">
+    <main id="app" class="note-shell" data-action-tone="slate">
       <div class="top-bar">
-        <div class="window-actions" aria-label="窗口操作">
-          <button class="chrome-button settings-button" type="button" aria-label="设置（暂不可用）" title="设置（暂不可用）" aria-disabled="true">
-            <span aria-hidden="true">⚙</span>
-          </button>
-          <button id="hide-to-tray" class="chrome-button close-button" type="button" aria-label="关闭到托盘（Esc）" title="关闭到托盘（Esc）">
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
+        <button class="chrome-button settings-button" type="button" aria-label="设置（暂不可用）" title="设置（暂不可用）" aria-disabled="true">
+          <span aria-hidden="true">⚙</span>
+        </button>
 
         <nav class="scope-tabs" role="tablist" aria-label="计划类型">
           <button class="scope-tab" type="button" role="tab" data-plan-scope="week" aria-selected="false">
@@ -28,6 +23,10 @@
             月计划
           </button>
         </nav>
+
+        <button id="hide-to-tray" class="chrome-button close-button" type="button" aria-label="关闭到托盘（Esc）" title="关闭到托盘（Esc）">
+          <span aria-hidden="true">×</span>
+        </button>
       </div>
 
       <header class="note-header">
