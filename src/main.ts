@@ -435,7 +435,7 @@ async function toggleTask(taskId: string | null) {
   const taskLayoutBeforeToggle = captureTaskLayout();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
-  task.order = task.done ? getPreviousOrderInGroup(getViewedTasks(), true, task.id) : getNextOrderInGroup(getViewedTasks(), false, task.importance, task.id);
+  task.order = task.done ? getPreviousOrderInCompletionGroup(getViewedTasks(), true, task.id) : getNextOrderInCompletionGroup(getViewedTasks(), false, task.id);
   sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   if (task.done) {
@@ -467,7 +467,7 @@ async function setTaskImportance(taskId: string, importance: Importance) {
   }
 
   task.importance = importance;
-  sortAndResequenceTasks(getViewedTasks());
+  sortByImportanceAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   render();
   await persist(`已设为${IMPORTANCE_LABELS[importance]}重要性`);
@@ -1221,7 +1221,20 @@ function sortAndResequenceTasks(tasks: Task[]) {
   resequenceTasks(tasks);
 }
 
-function compareTasksByListOrder(first: Pick<Task, "done" | "importance" | "order">, second: Pick<Task, "done" | "importance" | "order">) {
+function sortByImportanceAndResequenceTasks(tasks: Task[]) {
+  tasks.sort(compareTasksByImportanceOrder);
+  resequenceTasks(tasks);
+}
+
+function compareTasksByListOrder(first: Pick<Task, "done" | "order">, second: Pick<Task, "done" | "order">) {
+  if (first.done !== second.done) {
+    return first.done ? 1 : -1;
+  }
+
+  return first.order - second.order;
+}
+
+function compareTasksByImportanceOrder(first: Pick<Task, "done" | "importance" | "order">, second: Pick<Task, "done" | "importance" | "order">) {
   if (first.done !== second.done) {
     return first.done ? 1 : -1;
   }
@@ -1238,20 +1251,16 @@ function compareTasksByListOrder(first: Pick<Task, "done" | "importance" | "orde
 }
 
 function tasksBelongToSameOrderGroup(first: Task, second: Task) {
-  if (first.done || second.done) {
-    return first.done === second.done;
-  }
-
-  return first.importance === second.importance;
+  return first.done === second.done;
 }
 
 function getNextOrder(tasks: Task[]) {
   return tasks.reduce((nextOrder, task) => Math.max(nextOrder, task.order + 1), 0);
 }
 
-function getNextOrderInGroup(tasks: Task[], done: boolean, importance: Importance, ignoredTaskId: string | null = null) {
+function getNextOrderInCompletionGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
   return tasks.reduce((nextOrder, task) => {
-    if (task.id === ignoredTaskId || task.done !== done || (!done && task.importance !== importance)) {
+    if (task.id === ignoredTaskId || task.done !== done) {
       return nextOrder;
     }
 
@@ -1259,7 +1268,7 @@ function getNextOrderInGroup(tasks: Task[], done: boolean, importance: Importanc
   }, 0);
 }
 
-function getPreviousOrderInGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
+function getPreviousOrderInCompletionGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
   const groupOrders = tasks
     .filter((task) => task.id !== ignoredTaskId && task.done === done)
     .map((task) => task.order);
