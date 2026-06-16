@@ -119,6 +119,50 @@ const emptyStateTitleElement = requireElement<HTMLParagraphElement>("#empty-stat
 const emptyStateDetailElement = requireElement<HTMLElement>("#empty-state-detail");
 const taskListElement = requireElement<HTMLUListElement>("#task-list");
 const allDoneRewardElement = requireElement<HTMLElement>("#all-done-reward");
+const priorityFlyoutElement = createPriorityFlyout();
+
+let priorityFlyoutTaskId: string | null = null;
+let priorityFlyoutHideTimer: number | null = null;
+
+noteShellElement.append(priorityFlyoutElement);
+
+priorityFlyoutElement.addEventListener("pointerenter", () => {
+  clearPriorityFlyoutHideTimer();
+});
+
+priorityFlyoutElement.addEventListener("pointerleave", () => {
+  scheduleHidePriorityFlyout();
+});
+
+priorityFlyoutElement.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const importanceButton = target.closest<HTMLButtonElement>("button[data-importance]");
+  const importance = importanceButton?.dataset.importance;
+
+  if (!priorityFlyoutTaskId || !isImportance(importance)) {
+    return;
+  }
+
+  const taskId = priorityFlyoutTaskId;
+  event.preventDefault();
+  hidePriorityFlyout();
+  void setTaskImportance(taskId, importance);
+});
+
+priorityFlyoutElement.addEventListener("focusout", (event) => {
+  const relatedTarget = event.relatedTarget;
+
+  if (relatedTarget instanceof Node && (taskListElement.contains(relatedTarget) || priorityFlyoutElement.contains(relatedTarget))) {
+    return;
+  }
+
+  scheduleHidePriorityFlyout();
+});
 
 noteShellElement.addEventListener("pointerdown", (event) => {
   if (!canStartWindowDrag(event)) {
@@ -195,6 +239,58 @@ document.addEventListener("keydown", (event) => {
   navigatePlan(event.key === "ArrowLeft" ? -1 : 1);
 });
 
+taskListElement.addEventListener("pointerover", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem || !taskListElement.contains(taskItem)) {
+    return;
+  }
+
+  showPriorityFlyoutForTask(taskItem);
+});
+
+taskListElement.addEventListener("pointerout", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem) {
+    return;
+  }
+
+  const relatedTarget = event.relatedTarget;
+
+  if (relatedTarget instanceof Node && (taskItem.contains(relatedTarget) || priorityFlyoutElement.contains(relatedTarget))) {
+    return;
+  }
+
+  scheduleHidePriorityFlyout();
+});
+
+taskListElement.addEventListener("scroll", () => {
+  if (!priorityFlyoutTaskId) {
+    return;
+  }
+
+  const taskItem = getTaskItem(priorityFlyoutTaskId);
+
+  if (taskItem) {
+    positionPriorityFlyout(taskItem);
+  } else {
+    hidePriorityFlyout();
+  }
+});
+
 taskListElement.addEventListener("click", (event) => {
   if (suppressNextTaskClick) {
     event.preventDefault();
@@ -218,18 +314,6 @@ taskListElement.addEventListener("click", (event) => {
   const taskId = taskItem.dataset.taskId ?? null;
   focusedTaskId = taskId;
 
-  const importanceButton = target.closest<HTMLButtonElement>("button[data-importance]");
-
-  if (importanceButton) {
-    const importance = importanceButton.dataset.importance;
-
-    if (taskId && isImportance(importance)) {
-      void setTaskImportance(taskId, importance);
-    }
-
-    return;
-  }
-
   if (target.closest("[data-action='toggle']")) {
     void toggleTask(taskId);
     return;
@@ -247,7 +331,22 @@ taskListElement.addEventListener("focusin", (event) => {
     return;
   }
 
-  focusedTaskId = target.closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? null;
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+  focusedTaskId = taskItem?.dataset.taskId ?? null;
+
+  if (taskItem) {
+    showPriorityFlyoutForTask(taskItem);
+  }
+});
+
+taskListElement.addEventListener("focusout", (event) => {
+  const relatedTarget = event.relatedTarget;
+
+  if (relatedTarget instanceof Node && (taskListElement.contains(relatedTarget) || priorityFlyoutElement.contains(relatedTarget))) {
+    return;
+  }
+
+  scheduleHidePriorityFlyout();
 });
 
 taskListElement.addEventListener("pointerdown", (event) => {
@@ -549,6 +648,7 @@ function render() {
   renderScopeTabs();
   renderDateHeader();
   renderEmptyState();
+  hidePriorityFlyout();
 
   const tasks = getViewedTasks();
 
@@ -594,26 +694,6 @@ function renderTask(task: Task) {
   textElement.className = "task-text";
   textElement.textContent = task.text;
 
-  const importanceGroup = document.createElement("div");
-  importanceGroup.className = "task-importance";
-  importanceGroup.setAttribute("role", "group");
-  importanceGroup.setAttribute("aria-label", "设置重要性");
-
-  for (const importance of ["low", "medium", "high"] as const) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `priority-button priority-${importance}`;
-    button.dataset.importance = importance;
-    button.dataset.label = IMPORTANCE_LABELS[importance];
-    button.disabled = isEditingLocked();
-    button.setAttribute("aria-label", `设为${IMPORTANCE_LABELS[importance]}重要性`);
-    button.setAttribute("aria-pressed", String(task.importance === importance));
-    if (task.importance === importance) {
-      button.classList.add("is-active");
-    }
-    importanceGroup.append(button);
-  }
-
   content.append(textElement);
 
   const deleteButton = document.createElement("button");
@@ -624,7 +704,7 @@ function renderTask(task: Task) {
   deleteButton.setAttribute("aria-label", `删除任务：${task.text}`);
   deleteButton.textContent = "×";
 
-  item.append(toggleButton, content, importanceGroup, deleteButton);
+  item.append(toggleButton, content, deleteButton);
 
   if (task.id === recentlyCompletedTaskId) {
     const sheen = document.createElement("span");
@@ -866,6 +946,11 @@ function updateBusyState() {
   composerElement.toggleAttribute("aria-disabled", locked);
   taskListElement.toggleAttribute("aria-busy", isLoading || isSaving);
   taskListElement.setAttribute("aria-disabled", String(locked));
+  priorityFlyoutElement.inert = locked;
+
+  if (locked) {
+    hidePriorityFlyout();
+  }
 }
 
 function isEditingLocked() {
@@ -1789,6 +1874,7 @@ function clearDragState() {
   dropPosition = "before";
   taskListElement.classList.remove("is-sorting");
   updateDragIndicators();
+  hidePriorityFlyout();
 }
 
 function updateDragIndicators() {
@@ -1833,9 +1919,100 @@ function isWindowDragBlockedTarget(target: Element) {
         "#task-list",
         ".top-bar",
         ".composer",
+        ".priority-flyout",
       ].join(", "),
     ),
   );
+}
+
+function createPriorityFlyout() {
+  const flyout = document.createElement("div");
+  flyout.className = "priority-flyout";
+  flyout.setAttribute("role", "group");
+  flyout.setAttribute("aria-label", "设置重要性");
+  flyout.hidden = true;
+
+  for (const importance of ["low", "medium", "high"] as const) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `priority-button priority-${importance}`;
+    button.dataset.importance = importance;
+    button.dataset.label = IMPORTANCE_LABELS[importance];
+    button.disabled = isEditingLocked();
+    button.setAttribute("aria-label", `设为${IMPORTANCE_LABELS[importance]}重要性`);
+    button.setAttribute("aria-pressed", "false");
+    flyout.append(button);
+  }
+
+  return flyout;
+}
+
+function showPriorityFlyoutForTask(taskItem: HTMLElement) {
+  const taskId = taskItem.dataset.taskId ?? null;
+
+  if (!taskId) {
+    return;
+  }
+
+  priorityFlyoutTaskId = taskId;
+  clearPriorityFlyoutHideTimer();
+  priorityFlyoutElement.hidden = false;
+  priorityFlyoutElement.dataset.visible = "true";
+  priorityFlyoutElement.querySelectorAll<HTMLButtonElement>("button[data-importance]").forEach((button) => {
+    const importance = button.dataset.importance;
+    const isActive = importance === taskItem.dataset.importance;
+    button.disabled = isEditingLocked();
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  positionPriorityFlyout(taskItem);
+}
+
+function positionPriorityFlyout(taskItem: HTMLElement) {
+  const itemRect = taskItem.getBoundingClientRect();
+  const listRect = taskListElement.getBoundingClientRect();
+  const shellRect = noteShellElement.getBoundingClientRect();
+
+  if (itemRect.bottom < listRect.top || itemRect.top > listRect.bottom) {
+    hidePriorityFlyout();
+    return;
+  }
+
+  const flyoutRect = priorityFlyoutElement.getBoundingClientRect();
+  const flyoutWidth = flyoutRect.width || 16;
+  const flyoutHeight = flyoutRect.height || 54;
+  const centeredTop = itemRect.top + itemRect.height / 2 - shellRect.top - flyoutHeight / 2;
+  const desiredLeft = itemRect.right - shellRect.left + 4;
+  const left = Math.min(shellRect.width - flyoutWidth - 2, Math.max(0, desiredLeft));
+  const top = Math.max(12, Math.min(shellRect.height - flyoutHeight - 12, centeredTop));
+
+  priorityFlyoutElement.style.left = `${left}px`;
+  priorityFlyoutElement.style.top = `${top}px`;
+}
+
+function hidePriorityFlyout() {
+  clearPriorityFlyoutHideTimer();
+  priorityFlyoutTaskId = null;
+  priorityFlyoutElement.hidden = true;
+  delete priorityFlyoutElement.dataset.visible;
+}
+
+function scheduleHidePriorityFlyout() {
+  clearPriorityFlyoutHideTimer();
+  priorityFlyoutHideTimer = window.setTimeout(() => {
+    hidePriorityFlyout();
+  }, 120);
+}
+
+function clearPriorityFlyoutHideTimer() {
+  if (priorityFlyoutHideTimer !== null) {
+    window.clearTimeout(priorityFlyoutHideTimer);
+    priorityFlyoutHideTimer = null;
+  }
+}
+
+function getTaskItem(taskId: string) {
+  return taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
 }
 
 function isImportance(value: string | undefined): value is Importance {

@@ -38,10 +38,10 @@
   --gold-soft: rgb(200 144 46 / 13%);
   --low: #74a5c8;
   --low-soft: rgb(116 165 200 / 15%);
-  --medium: #1f806d;
-  --medium-soft: rgb(31 128 109 / 13%);
-  --high: #a9473a;
-  --high-soft: rgb(169 71 58 / 13%);
+  --medium: #79c7b4;
+  --medium-soft: rgb(121 199 180 / 15%);
+  --high: #df9ca8;
+  --high-soft: rgb(223 156 168 / 15%);
 }
 
 * {
@@ -716,28 +716,28 @@ h1 {
 .task-item[data-importance="medium"] {
   --task-accent: var(--medium);
   --task-accent-soft: var(--medium-soft);
-  --task-accent-wash: rgb(31 128 109 / 7%);
-  --task-accent-line: rgb(31 128 109 / 24%);
-  --task-accent-shadow: rgb(31 128 109 / 9%);
-  --task-done-wash: rgb(31 128 109 / 4%);
-  --task-done-line: rgb(31 128 109 / 13%);
-  --task-done-rail: rgb(31 128 109 / 32%);
-  --importance-group-line: rgb(31 128 109 / 18%);
-  --importance-group-wash: rgb(31 128 109 / 5%);
+  --task-accent-wash: rgb(121 199 180 / 7%);
+  --task-accent-line: rgb(121 199 180 / 24%);
+  --task-accent-shadow: rgb(121 199 180 / 9%);
+  --task-done-wash: rgb(121 199 180 / 4%);
+  --task-done-line: rgb(121 199 180 / 13%);
+  --task-done-rail: rgb(121 199 180 / 32%);
+  --importance-group-line: rgb(121 199 180 / 18%);
+  --importance-group-wash: rgb(121 199 180 / 5%);
   --task-rail-width: 3px;
 }
 
 .task-item[data-importance="high"] {
   --task-accent: var(--high);
   --task-accent-soft: var(--high-soft);
-  --task-accent-wash: rgb(169 71 58 / 9%);
-  --task-accent-line: rgb(169 71 58 / 32%);
-  --task-accent-shadow: rgb(169 71 58 / 12%);
-  --task-done-wash: rgb(169 71 58 / 5%);
-  --task-done-line: rgb(169 71 58 / 16%);
-  --task-done-rail: rgb(169 71 58 / 36%);
-  --importance-group-line: rgb(169 71 58 / 22%);
-  --importance-group-wash: rgb(169 71 58 / 6%);
+  --task-accent-wash: rgb(223 156 168 / 9%);
+  --task-accent-line: rgb(223 156 168 / 32%);
+  --task-accent-shadow: rgb(223 156 168 / 12%);
+  --task-done-wash: rgb(223 156 168 / 5%);
+  --task-done-line: rgb(223 156 168 / 16%);
+  --task-done-rail: rgb(223 156 168 / 36%);
+  --importance-group-line: rgb(223 156 168 / 22%);
+  --importance-group-wash: rgb(223 156 168 / 6%);
   --task-rail-width: 4px;
 }
 
@@ -938,28 +938,24 @@ h1 {
   animation: task-strike 920ms cubic-bezier(0.25, 0.9, 0.25, 1) both;
 }
 
-.task-importance {
+.priority-flyout {
+  --importance-group-line: rgb(60 82 69 / 16%);
+  --importance-group-wash: rgb(31 128 109 / 5%);
+  --task-accent-shadow: rgb(31 128 109 / 11%);
   position: absolute;
-  top: 50%;
-  right: 42px;
-  z-index: 3;
+  z-index: 5;
   display: grid;
   grid-template-rows: repeat(3, 12px);
   gap: 5px;
   align-items: center;
   justify-items: center;
-  padding: 5px;
-  border: 1px solid var(--importance-group-line);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgb(255 253 246 / 84%), rgb(255 250 238 / 76%)),
-    var(--importance-group-wash);
-  box-shadow:
-    0 7px 16px var(--task-accent-shadow),
-    inset 0 1px 0 rgb(255 255 255 / 64%);
+  width: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   opacity: 0;
   pointer-events: none;
-  transform: translate(4px, -50%) scale(0.96);
+  transform: translateX(-4px) scale(0.96);
   transition:
     opacity 140ms ease,
     transform 140ms ease,
@@ -967,12 +963,15 @@ h1 {
   visibility: hidden;
 }
 
-.task-item:hover .task-importance,
-.task-item:focus-within .task-importance {
+.priority-flyout[data-visible="true"] {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(0, -50%) scale(1);
+  transform: translateX(0) scale(1);
   visibility: visible;
+}
+
+.priority-flyout[hidden] {
+  display: none;
 }
 
 .priority-button {
@@ -1035,21 +1034,21 @@ h1 {
 .priority-medium {
   --priority-color: var(--medium);
   --priority-soft: var(--medium-soft);
-  --priority-active: #17695a;
-  --priority-line: rgb(31 128 109 / 34%);
-  --priority-hover-line: rgb(31 128 109 / 24%);
-  --priority-ring: rgb(31 128 109 / 18%);
-  --priority-shadow: rgb(31 128 109 / 11%);
+  --priority-active: #5b9f92;
+  --priority-line: rgb(121 199 180 / 34%);
+  --priority-hover-line: rgb(121 199 180 / 24%);
+  --priority-ring: rgb(121 199 180 / 18%);
+  --priority-shadow: rgb(121 199 180 / 11%);
 }
 
 .priority-high {
   --priority-color: var(--high);
   --priority-soft: var(--high-soft);
-  --priority-active: #92372f;
-  --priority-line: rgb(169 71 58 / 36%);
-  --priority-hover-line: rgb(169 71 58 / 26%);
-  --priority-ring: rgb(169 71 58 / 20%);
-  --priority-shadow: rgb(169 71 58 / 12%);
+  --priority-active: #c07f8b;
+  --priority-line: rgb(223 156 168 / 36%);
+  --priority-hover-line: rgb(223 156 168 / 26%);
+  --priority-ring: rgb(223 156 168 / 20%);
+  --priority-shadow: rgb(223 156 168 / 12%);
 }
 
 .priority-button:hover,
@@ -1334,8 +1333,7 @@ h1 {
     padding: 10px;
   }
 
-  .task-importance {
-    right: 38px;
+  .priority-flyout {
     grid-template-rows: repeat(3, 11px);
     gap: 4px;
   }
