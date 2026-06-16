@@ -766,6 +766,16 @@ h1 {
 .task-item.is-dragging {
   opacity: 0.72;
   transform: scale(0.996);
+  z-index: 1;
+}
+
+.task-list.is-sorting {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.task-list.is-sorting .task-item {
+  cursor: grabbing;
 }
 
 .task-item.is-drop-before::before,
@@ -778,6 +788,7 @@ h1 {
   background: linear-gradient(90deg, transparent, rgba(34, 122, 105, 0.88), transparent);
   box-shadow: 0 0 0 1px rgba(34, 122, 105, 0.08);
   content: "";
+  pointer-events: none;
 }
 
 .task-item.is-drop-before::before {
@@ -1001,11 +1012,12 @@ h1 {
   background: var(--cinnabar-soft);
 }
 
-.task-item[draggable="true"] {
+.task-item[data-sortable="true"] {
   cursor: grab;
+  touch-action: none;
 }
 
-.task-item[draggable="true"]:active {
+.task-item[data-sortable="true"]:active {
   cursor: grabbing;
 }
 

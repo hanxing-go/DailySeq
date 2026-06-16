@@ -186,8 +186,8 @@ To also build installers after verification:
 ## Importance and Ordering
 
 - Each task has a lightweight low / medium / high importance control shown directly on the task row.
-- Click an importance segment to save that level immediately. The list auto-sorts unfinished and completed tasks by high, medium, then low importance.
-- Drag a task row and drop it above or below another task in the same completion and importance group to change its manual order. DayNote resequences the `order` field and persists the new order after the drop.
+- Click an importance segment to save that level immediately without changing the task's current position.
+- Drag a task row and drop it above or below another task to change the manual order across the whole active plan. DayNote resequences the `order` field and persists the new order after the drop.
 - If loading `daynote.json` fails, importance controls and drag sorting are disabled along with other editing actions to protect the existing file from being overwritten.
 
 ## Date Navigation

@@ -10,6 +10,9 @@ const DEFAULT_IMPORTANCE: Importance = "low";
 const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const WEEK_IN_MS = 7 * DAY_IN_MS;
+const DRAG_START_THRESHOLD = 6;
+const DRAG_SCROLL_EDGE_SIZE = 42;
+const DRAG_SCROLL_MAX_STEP = 14;
 const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const REWARD_SPARKS = [
@@ -28,11 +31,6 @@ const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
   medium: "中",
   high: "高",
-};
-const IMPORTANCE_SORT_ORDER: Record<Importance, number> = {
-  high: 0,
-  medium: 1,
-  low: 2,
 };
 
 interface Task {
@@ -60,6 +58,18 @@ interface DaynoteData {
   };
 }
 
+interface TaskDragCandidate {
+  taskId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  item: HTMLElement;
+}
+
+interface TaskDragState extends TaskDragCandidate {
+  lastY: number;
+}
+
 const appWindow = getCurrentWindow();
 
 let data: DaynoteData = createEmptyData();
@@ -73,6 +83,10 @@ let isLoadBlocked = false;
 let draggedTaskId: string | null = null;
 let dropTargetTaskId: string | null = null;
 let dropPosition: DropPosition = "before";
+let taskDragCandidate: TaskDragCandidate | null = null;
+let taskDragState: TaskDragState | null = null;
+let suppressNextTaskClick = false;
+let dragScrollFrame = 0;
 let recentlyAddedTaskId: string | null = null;
 let recentlyCompletedTaskId: string | null = null;
 let addFeedbackTimer: number | null = null;
@@ -175,6 +189,13 @@ document.addEventListener("keydown", (event) => {
 });
 
 taskListElement.addEventListener("click", (event) => {
+  if (suppressNextTaskClick) {
+    event.preventDefault();
+    event.stopPropagation();
+    suppressNextTaskClick = false;
+    return;
+  }
+
   const target = event.target;
 
   if (!(target instanceof Element)) {
@@ -222,6 +243,79 @@ taskListElement.addEventListener("focusin", (event) => {
   focusedTaskId = target.closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? null;
 });
 
+taskListElement.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  if (event.button !== 0 || isEditingLocked()) {
+    return;
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem || isInteractiveTaskTarget(target)) {
+    return;
+  }
+
+  const taskId = taskItem.dataset.taskId ?? null;
+
+  if (!taskId) {
+    return;
+  }
+
+  taskDragCandidate = {
+    taskId,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    item: taskItem,
+  };
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!taskDragCandidate || event.pointerId !== taskDragCandidate.pointerId || isEditingLocked()) {
+    return;
+  }
+
+  const distance = Math.hypot(event.clientX - taskDragCandidate.startX, event.clientY - taskDragCandidate.startY);
+
+  if (!taskDragState) {
+    if (distance < DRAG_START_THRESHOLD) {
+      return;
+    }
+
+    beginTaskDrag(taskDragCandidate, event);
+  }
+
+  if (!taskDragState) {
+    return;
+  }
+
+  event.preventDefault();
+  taskDragState.lastY = event.clientY;
+  setDropTargetFromPoint(event.clientY);
+  scheduleDragAutoScroll();
+});
+
+document.addEventListener("pointerup", (event) => {
+  if (!taskDragCandidate || event.pointerId !== taskDragCandidate.pointerId) {
+    return;
+  }
+
+  finishTaskDrag(event.clientY);
+});
+
+document.addEventListener("pointercancel", (event) => {
+  if (!taskDragCandidate || event.pointerId !== taskDragCandidate.pointerId) {
+    return;
+  }
+
+  clearDragState();
+});
+
 taskListElement.addEventListener("keydown", (event) => {
   const target = event.target;
 
@@ -254,95 +348,6 @@ taskListElement.addEventListener("keydown", (event) => {
     event.preventDefault();
     void deleteTask(taskId);
   }
-});
-
-taskListElement.addEventListener("dragstart", (event) => {
-  const target = event.target;
-
-  if (!(target instanceof Element) || isEditingLocked()) {
-    event.preventDefault();
-    return;
-  }
-
-  const taskItem = target.closest<HTMLElement>("[data-task-id]");
-
-  if (!taskItem || target.closest("button, input, textarea, select, a, [role='button']")) {
-    event.preventDefault();
-    return;
-  }
-
-  const taskId = taskItem.dataset.taskId ?? null;
-
-  if (!taskId) {
-    event.preventDefault();
-    return;
-  }
-
-  draggedTaskId = taskId;
-  dropTargetTaskId = null;
-  dropPosition = "before";
-  focusedTaskId = taskId;
-  updateDragIndicators();
-
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", taskId);
-  }
-});
-
-taskListElement.addEventListener("dragover", (event) => {
-  if (!draggedTaskId || isEditingLocked()) {
-    return;
-  }
-
-  const target = resolveDropTarget(event);
-
-  if (!target) {
-    setDropTarget(null, "before");
-    return;
-  }
-
-  event.preventDefault();
-
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "move";
-  }
-
-  setDropTarget(target.taskId, target.position);
-});
-
-taskListElement.addEventListener("drop", (event) => {
-  if (!draggedTaskId || isEditingLocked()) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const target = resolveDropTarget(event);
-  const sourceTaskId = draggedTaskId;
-
-  clearDragState();
-
-  if (!target || !sourceTaskId) {
-    focusTask(sourceTaskId ?? focusedTaskId ?? "");
-    return;
-  }
-
-  const moved = moveTask(sourceTaskId, target.taskId, target.position);
-
-  if (!moved) {
-    focusTask(sourceTaskId);
-    return;
-  }
-
-  focusedTaskId = sourceTaskId;
-  render();
-  void persist("已调整顺序");
-  focusTask(sourceTaskId);
-});
-
-taskListElement.addEventListener("dragend", () => {
-  clearDragState();
 });
 
 renderDateHeader();
@@ -394,7 +399,7 @@ async function addTask() {
     done: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
-    order: getNextOrderInGroup(tasks, false, DEFAULT_IMPORTANCE),
+    order: getNextOrder(tasks),
   };
 
   tasks.push(task);
@@ -422,7 +427,6 @@ async function toggleTask(taskId: string | null) {
   const wasAllDone = getRecordedAllDoneState();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
-  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.importance, task.id);
   sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   if (task.done) {
@@ -451,7 +455,6 @@ async function setTaskImportance(taskId: string, importance: Importance) {
   }
 
   task.importance = importance;
-  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.importance, task.id);
   sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   render();
@@ -550,8 +553,8 @@ function renderTask(task: Task) {
   }
   item.dataset.taskId = task.id;
   item.dataset.importance = task.importance;
+  item.dataset.sortable = String(!isEditingLocked());
   item.tabIndex = 0;
-  item.draggable = !isEditingLocked();
   item.setAttribute(
     "aria-label",
     `${task.done ? "已完成" : "未完成"}，重要性 ${IMPORTANCE_LABELS[task.importance]}，${task.text}`,
@@ -1167,10 +1170,6 @@ function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosi
     return false;
   }
 
-  if (!tasksBelongToSameOrderGroup(tasks[fromIndex], tasks[targetIndex])) {
-    return false;
-  }
-
   if (position === "before" && fromIndex === targetIndex - 1) {
     return false;
   }
@@ -1204,32 +1203,12 @@ function sortAndResequenceTasks(tasks: Task[]) {
   resequenceTasks(tasks);
 }
 
-function compareTasksByListOrder(first: Pick<Task, "done" | "importance" | "order">, second: Pick<Task, "done" | "importance" | "order">) {
-  if (first.done !== second.done) {
-    return first.done ? 1 : -1;
-  }
-
-  const importanceDelta = IMPORTANCE_SORT_ORDER[first.importance] - IMPORTANCE_SORT_ORDER[second.importance];
-
-  if (importanceDelta !== 0) {
-    return importanceDelta;
-  }
-
+function compareTasksByListOrder(first: Pick<Task, "order">, second: Pick<Task, "order">) {
   return first.order - second.order;
 }
 
-function tasksBelongToSameOrderGroup(first: Task, second: Task) {
-  return first.done === second.done && first.importance === second.importance;
-}
-
-function getNextOrderInGroup(tasks: Task[], done: boolean, importance: Importance, ignoredTaskId: string | null = null) {
-  return tasks.reduce((nextOrder, task) => {
-    if (task.id === ignoredTaskId || task.done !== done || task.importance !== importance) {
-      return nextOrder;
-    }
-
-    return Math.max(nextOrder, task.order + 1);
-  }, 0);
+function getNextOrder(tasks: Task[]) {
+  return tasks.reduce((nextOrder, task) => Math.max(nextOrder, task.order + 1), 0);
 }
 
 function createEmptyData(): DaynoteData {
@@ -1519,59 +1498,151 @@ function focusTask(taskId: string) {
   });
 }
 
-function resolveDropTarget(event: DragEvent) {
-  const target = event.target;
+function beginTaskDrag(candidate: TaskDragCandidate, event: PointerEvent) {
+  draggedTaskId = candidate.taskId;
+  dropTargetTaskId = null;
+  dropPosition = "before";
+  focusedTaskId = candidate.taskId;
+  taskDragState = {
+    ...candidate,
+    lastY: event.clientY,
+  };
+  taskListElement.classList.add("is-sorting");
 
-  if (!(target instanceof Element)) {
-    return resolveEndDropTarget();
+  try {
+    candidate.item.setPointerCapture(candidate.pointerId);
+  } catch {
+    // Pointer capture is a nicety here; document-level listeners still keep the drag usable.
   }
 
-  const taskItem = target.closest<HTMLElement>("[data-task-id]");
-
-  if (!taskItem) {
-    return resolveEndDropTarget();
-  }
-
-  const taskId = taskItem.dataset.taskId ?? null;
-
-  if (!taskId || taskId === draggedTaskId || !canDropOnTask(taskId)) {
-    return null;
-  }
-
-  const rect = taskItem.getBoundingClientRect();
-  const position: DropPosition = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-
-  return { taskId, position };
+  updateDragIndicators();
+  setDropTargetFromPoint(event.clientY);
 }
 
-function resolveEndDropTarget() {
-  const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
+function suppressTaskClickOnce() {
+  suppressNextTaskClick = true;
+  window.setTimeout(() => {
+    suppressNextTaskClick = false;
+  }, 0);
+}
 
-  if (!draggedTask) {
+function finishTaskDrag(clientY: number) {
+  if (!taskDragCandidate) {
+    return;
+  }
+
+  const sourceTaskId = draggedTaskId;
+
+  if (!taskDragState) {
+    taskDragCandidate = null;
+    return;
+  }
+
+  setDropTargetFromPoint(clientY);
+
+  const targetTaskId = dropTargetTaskId;
+  const targetPosition = dropPosition;
+
+  clearDragState();
+
+  if (!sourceTaskId || !targetTaskId) {
+    focusTask(sourceTaskId ?? focusedTaskId ?? "");
+    return;
+  }
+
+  const moved = moveTask(sourceTaskId, targetTaskId, targetPosition);
+
+  if (!moved) {
+    focusTask(sourceTaskId);
+    return;
+  }
+
+  focusedTaskId = sourceTaskId;
+  render();
+  suppressTaskClickOnce();
+  void persist("已调整顺序");
+  focusTask(sourceTaskId);
+}
+
+function setDropTargetFromPoint(clientY: number) {
+  const target = resolveDropTargetFromPoint(clientY);
+
+  if (!target) {
+    setDropTarget(null, "before");
+    return;
+  }
+
+  setDropTarget(target.taskId, target.position);
+}
+
+function resolveDropTargetFromPoint(clientY: number) {
+  if (!draggedTaskId) {
     return null;
   }
 
-  const groupTaskItems = Array.from(taskListElement.querySelectorAll<HTMLElement>("[data-task-id]")).filter((item) => {
-    const taskId = item.dataset.taskId ?? "";
-    const task = findTask(taskId);
-
-    return task && tasksBelongToSameOrderGroup(task, draggedTask);
+  const taskItems = Array.from(taskListElement.querySelectorAll<HTMLElement>("[data-task-id]")).filter((item) => {
+    return item.dataset.taskId !== draggedTaskId;
   });
-  const lastTaskItem = groupTaskItems.at(-1);
-  const taskId = lastTaskItem?.dataset.taskId ?? null;
 
-  if (!taskId || taskId === draggedTaskId) {
+  if (taskItems.length === 0) {
     return null;
   }
 
-  return { taskId, position: "after" as DropPosition };
+  for (const item of taskItems) {
+    const rect = item.getBoundingClientRect();
+    const taskId = item.dataset.taskId ?? null;
+
+    if (taskId && clientY < rect.top + rect.height / 2) {
+      return { taskId, position: "before" as DropPosition };
+    }
+  }
+
+  const lastTaskId = taskItems.at(-1)?.dataset.taskId ?? null;
+
+  return lastTaskId ? { taskId: lastTaskId, position: "after" as DropPosition } : null;
 }
 
-function canDropOnTask(taskId: string) {
-  const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
-  const targetTask = findTask(taskId);
+function autoScrollTaskList(clientY: number) {
+  const rect = taskListElement.getBoundingClientRect();
+  let scrollStep = 0;
 
-  return Boolean(draggedTask && targetTask && tasksBelongToSameOrderGroup(draggedTask, targetTask));
+  if (clientY < rect.top + DRAG_SCROLL_EDGE_SIZE) {
+    scrollStep = -Math.ceil(((rect.top + DRAG_SCROLL_EDGE_SIZE - clientY) / DRAG_SCROLL_EDGE_SIZE) * DRAG_SCROLL_MAX_STEP);
+  } else if (clientY > rect.bottom - DRAG_SCROLL_EDGE_SIZE) {
+    scrollStep = Math.ceil(((clientY - (rect.bottom - DRAG_SCROLL_EDGE_SIZE)) / DRAG_SCROLL_EDGE_SIZE) * DRAG_SCROLL_MAX_STEP);
+  }
+
+  if (scrollStep === 0) {
+    return false;
+  }
+
+  const previousScrollTop = taskListElement.scrollTop;
+  taskListElement.scrollTop += scrollStep;
+
+  return taskListElement.scrollTop !== previousScrollTop;
+}
+
+function scheduleDragAutoScroll() {
+  if (dragScrollFrame) {
+    return;
+  }
+
+  dragScrollFrame = window.requestAnimationFrame(runDragAutoScroll);
+}
+
+function runDragAutoScroll() {
+  dragScrollFrame = 0;
+
+  if (!taskDragState) {
+    return;
+  }
+
+  const didScroll = autoScrollTaskList(taskDragState.lastY);
+  setDropTargetFromPoint(taskDragState.lastY);
+
+  if (didScroll) {
+    scheduleDragAutoScroll();
+  }
 }
 
 function setDropTarget(taskId: string | null, position: DropPosition) {
@@ -1585,9 +1656,21 @@ function setDropTarget(taskId: string | null, position: DropPosition) {
 }
 
 function clearDragState() {
+  if (dragScrollFrame) {
+    window.cancelAnimationFrame(dragScrollFrame);
+    dragScrollFrame = 0;
+  }
+
+  if (taskDragCandidate?.item.hasPointerCapture(taskDragCandidate.pointerId)) {
+    taskDragCandidate.item.releasePointerCapture(taskDragCandidate.pointerId);
+  }
+
+  taskDragCandidate = null;
+  taskDragState = null;
   draggedTaskId = null;
   dropTargetTaskId = null;
   dropPosition = "before";
+  taskListElement.classList.remove("is-sorting");
   updateDragIndicators();
 }
 
@@ -1598,6 +1681,10 @@ function updateDragIndicators() {
     item.classList.toggle("is-drop-before", taskId === dropTargetTaskId && dropPosition === "before");
     item.classList.toggle("is-drop-after", taskId === dropTargetTaskId && dropPosition === "after");
   });
+}
+
+function isInteractiveTaskTarget(target: Element) {
+  return Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
 }
 
 function canStartWindowDrag(event: PointerEvent) {

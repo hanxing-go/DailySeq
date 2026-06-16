@@ -108,7 +108,7 @@ Each milestone must be implemented and committed separately.
    - Quick controls.
    - Keyboard shortcuts.
    - Drag reorder.
-   - The list order follows completion state, then importance, then `order`.
+   - The list order follows saved `order` only.
    - Loading failures must block editing, importance changes, and drag saves.
 
 4. Date navigation.
