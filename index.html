@@ -7,6 +7,18 @@
   </head>
   <body>
     <main id="app" class="note-shell">
+      <nav class="scope-tabs" role="tablist" aria-label="计划类型">
+        <button class="scope-tab" type="button" role="tab" data-plan-scope="week" aria-selected="false">
+          周计划
+        </button>
+        <button class="scope-tab is-active" type="button" role="tab" data-plan-scope="day" aria-selected="true">
+          日计划
+        </button>
+        <button class="scope-tab" type="button" role="tab" data-plan-scope="month" aria-selected="false">
+          月计划
+        </button>
+      </nav>
+
       <header class="note-header">
         <button id="previous-day" class="icon-button" type="button" aria-label="上一天（Alt+Left）">
           <span aria-hidden="true">‹</span>

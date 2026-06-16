@@ -4,10 +4,12 @@ import "./styles.css";
 
 type Importance = "low" | "medium" | "high";
 type DropPosition = "before" | "after";
+type PlanScope = "week" | "day" | "month";
 
 const DEFAULT_IMPORTANCE: Importance = "medium";
 const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const WEEK_IN_MS = 7 * DAY_IN_MS;
 const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const REWARD_SPARKS = [
@@ -42,8 +44,12 @@ interface DayPlan {
   tasks: Task[];
 }
 
+type PlanMap = Record<string, DayPlan>;
+
 interface DaynoteData {
-  days: Record<string, DayPlan>;
+  days: PlanMap;
+  weeks: PlanMap;
+  months: PlanMap;
   settings: {
     theme: string;
   };
@@ -52,6 +58,7 @@ interface DaynoteData {
 const appWindow = getCurrentWindow();
 
 let data: DaynoteData = createEmptyData();
+let currentPlanScope: PlanScope = "day";
 let viewedDate = startOfLocalDay(new Date());
 let viewedDateKey = toIsoDate(viewedDate);
 let focusedTaskId: string | null = null;
@@ -66,9 +73,10 @@ let recentlyCompletedTaskId: string | null = null;
 let addFeedbackTimer: number | null = null;
 let completeFeedbackTimer: number | null = null;
 let rewardTimer: number | null = null;
-const allDoneStateByDate = new Map<string, boolean>();
+const allDoneStateByPlan = new Map<string, boolean>();
 
 const noteShellElement = requireElement<HTMLElement>("#app");
+const scopeTabElements = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-plan-scope]"));
 const weekdayElement = requireElement<HTMLElement>("#weekday");
 const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
@@ -104,12 +112,24 @@ taskInputElement.addEventListener("keydown", (event) => {
   }
 });
 
+scopeTabElements.forEach((button) => {
+  button.addEventListener("click", () => {
+    const scope = button.dataset.planScope;
+
+    if (isPlanScope(scope)) {
+      switchPlanScope(scope);
+    }
+  });
+
+  button.addEventListener("keydown", handleScopeTabKeyDown);
+});
+
 previousDayButtonElement.addEventListener("click", () => {
-  navigateDay(-1);
+  navigatePlan(-1);
 });
 
 nextDayButtonElement.addEventListener("click", () => {
-  navigateDay(1);
+  navigatePlan(1);
 });
 
 hideToTrayButtonElement.addEventListener("click", () => {
@@ -136,7 +156,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
-  navigateDay(event.key === "ArrowLeft" ? -1 : 1);
+  navigatePlan(event.key === "ArrowLeft" ? -1 : 1);
 });
 
 taskListElement.addEventListener("click", (event) => {
@@ -490,6 +510,7 @@ async function hideToTray() {
 }
 
 function render() {
+  renderScopeTabs();
   renderDateHeader();
   renderEmptyState();
 
@@ -583,12 +604,12 @@ function renderTask(task: Task) {
   return item;
 }
 
-function navigateDay(dayOffset: number) {
+function navigatePlan(offset: number) {
   if (isLoading || isSaving) {
     return;
   }
 
-  viewedDate = addDays(viewedDate, dayOffset);
+  viewedDate = addPlanOffset(viewedDate, currentPlanScope, offset);
   viewedDateKey = toIsoDate(viewedDate);
   focusedTaskId = null;
   if (!isLoadBlocked) {
@@ -601,7 +622,105 @@ function navigateDay(dayOffset: number) {
   recordViewedAllDoneState();
 }
 
+function switchPlanScope(scope: PlanScope) {
+  if (currentPlanScope === scope || isLoading || isSaving) {
+    return;
+  }
+
+  currentPlanScope = scope;
+  focusedTaskId = null;
+  if (!isLoadBlocked) {
+    setStatus("");
+  }
+  clearDragState();
+  hideAllDoneReward();
+  updateBusyState();
+  render();
+  recordViewedAllDoneState();
+}
+
+function handleScopeTabKeyDown(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
+
+  const currentTab = event.currentTarget;
+
+  if (!(currentTab instanceof HTMLButtonElement) || currentTab.disabled) {
+    return;
+  }
+
+  const currentIndex = scopeTabElements.indexOf(currentTab);
+
+  if (currentIndex === -1) {
+    return;
+  }
+
+  let nextIndex: number;
+
+  switch (event.key) {
+    case "ArrowRight":
+    case "ArrowDown":
+      nextIndex = (currentIndex + 1) % scopeTabElements.length;
+      break;
+    case "ArrowLeft":
+    case "ArrowUp":
+      nextIndex = (currentIndex - 1 + scopeTabElements.length) % scopeTabElements.length;
+      break;
+    case "Home":
+      nextIndex = 0;
+      break;
+    case "End":
+      nextIndex = scopeTabElements.length - 1;
+      break;
+    default:
+      return;
+  }
+
+  const nextTab = scopeTabElements[nextIndex];
+  const nextScope = nextTab?.dataset.planScope;
+
+  if (!nextTab || !isPlanScope(nextScope)) {
+    return;
+  }
+
+  event.preventDefault();
+  switchPlanScope(nextScope);
+  nextTab.focus();
+}
+
+function renderScopeTabs() {
+  const navigationLocked = isLoading || isSaving;
+
+  scopeTabElements.forEach((button) => {
+    const isSelected = button.dataset.planScope === currentPlanScope;
+    button.classList.toggle("is-active", isSelected);
+    button.disabled = navigationLocked;
+    button.tabIndex = isSelected ? 0 : -1;
+    button.setAttribute("aria-selected", String(isSelected));
+  });
+
+  noteShellElement.dataset.planScope = currentPlanScope;
+}
+
 function renderDateHeader() {
+  previousDayButtonElement.setAttribute("aria-label", getNavigationLabel(-1));
+  previousDayButtonElement.title = getNavigationLabel(-1);
+  nextDayButtonElement.setAttribute("aria-label", getNavigationLabel(1));
+  nextDayButtonElement.title = getNavigationLabel(1);
+
+  if (currentPlanScope === "week") {
+    weekdayElement.textContent = "周计划";
+    dateTitleElement.textContent = formatWeekTitle(viewedDate);
+    return;
+  }
+
+  if (currentPlanScope === "month") {
+    weekdayElement.textContent = "月计划";
+    dateTitleElement.textContent = formatMonthTitle(viewedDate);
+    return;
+  }
+
   const relativeLabel = getRelativeDateLabel(viewedDate);
   const dateLabel = formatCalendarDate(viewedDate);
 
@@ -610,6 +729,16 @@ function renderDateHeader() {
 }
 
 function renderEmptyState() {
+  if (currentPlanScope === "week") {
+    renderScopedEmptyState("week");
+    return;
+  }
+
+  if (currentPlanScope === "month") {
+    renderScopedEmptyState("month");
+    return;
+  }
+
   const dayOffset = getDayOffset(viewedDate);
 
   if (isLoadBlocked) {
@@ -639,10 +768,30 @@ function renderEmptyState() {
   emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
 }
 
+function renderScopedEmptyState(scope: Exclude<PlanScope, "day">) {
+  if (isLoadBlocked) {
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
+    emptyStateDetailElement.textContent = "读取失败后，DayNote 不会保存新内容。";
+    emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
+    return;
+  }
+
+  if (scope === "week") {
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排。`;
+    emptyStateDetailElement.textContent = "写下这一周要推进的计划，周计划会单独保存。";
+  } else {
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排。`;
+    emptyStateDetailElement.textContent = "写下这个月要推进的计划，月计划会单独保存。";
+  }
+
+  emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
+}
+
 function updateBusyState() {
   const locked = isEditingLocked();
   const navigationLocked = isLoading || isSaving;
 
+  renderScopeTabs();
   taskInputElement.disabled = locked;
   taskInputElement.placeholder = isLoading
     ? LOADING_PLACEHOLDER
@@ -730,21 +879,21 @@ function clearCompletedFeedback() {
 }
 
 function getRecordedAllDoneState() {
-  return allDoneStateByDate.get(viewedDateKey) ?? isViewedDayAllDone();
+  return allDoneStateByPlan.get(getViewedPlanStateKey()) ?? isViewedPlanAllDone();
 }
 
 function recordViewedAllDoneState() {
-  allDoneStateByDate.set(viewedDateKey, isViewedDayAllDone());
+  allDoneStateByPlan.set(getViewedPlanStateKey(), isViewedPlanAllDone());
 }
 
 function recordAllDoneTransition(wasAllDone: boolean) {
-  const isAllDone = isViewedDayAllDone();
-  allDoneStateByDate.set(viewedDateKey, isAllDone);
+  const isAllDone = isViewedPlanAllDone();
+  allDoneStateByPlan.set(getViewedPlanStateKey(), isAllDone);
 
   return !wasAllDone && isAllDone;
 }
 
-function isViewedDayAllDone() {
+function isViewedPlanAllDone() {
   const tasks = getViewedTasks();
 
   return tasks.length > 0 && tasks.every((task) => task.done);
@@ -798,18 +947,42 @@ function createRewardPieces() {
 }
 
 function formatAllDoneRewardStatus() {
+  if (currentPlanScope === "week") {
+    return "当前周计划已全部完成";
+  }
+
+  if (currentPlanScope === "month") {
+    return "当前月计划已全部完成";
+  }
+
   const relativeLabel = getRelativeDateLabel(viewedDate);
 
   return relativeLabel ? `${relativeLabel}清单已全部完成` : "当前清单已全部完成";
 }
 
 function formatAllDoneRewardSeal() {
+  if (currentPlanScope === "week") {
+    return "本周已清";
+  }
+
+  if (currentPlanScope === "month") {
+    return "本月已清";
+  }
+
   const relativeLabel = getRelativeDateLabel(viewedDate);
 
   return relativeLabel ? `${relativeLabel}已清` : "当前已清";
 }
 
 function formatAllDoneSaveStatus() {
+  if (currentPlanScope === "week") {
+    return "当前周计划已全部完成";
+  }
+
+  if (currentPlanScope === "month") {
+    return "当前月计划已全部完成";
+  }
+
   const relativeLabel = getRelativeDateLabel(viewedDate);
 
   if (relativeLabel === "今天") {
@@ -824,24 +997,59 @@ function formatAllDoneSaveStatus() {
 }
 
 function getViewedTasks() {
-  return data.days[viewedDateKey]?.tasks ?? [];
+  return getViewedPlanMap()[getViewedPlanKey()]?.tasks ?? [];
 }
 
 function getMutableViewedTasks() {
-  const dayPlan = (data.days[viewedDateKey] ??= { tasks: [] });
-  dayPlan.tasks = repairTasks(dayPlan.tasks ?? []);
+  const planMap = getViewedPlanMap();
+  const plan = (planMap[getViewedPlanKey()] ??= { tasks: [] });
+  plan.tasks = repairTasks(plan.tasks ?? []);
 
-  return dayPlan.tasks;
+  return plan.tasks;
 }
 
 function findTask(taskId: string) {
   return getViewedTasks().find((task) => task.id === taskId);
 }
 
+function getViewedPlanMap() {
+  return getPlanMap(currentPlanScope);
+}
+
+function getPlanMap(scope: PlanScope) {
+  if (scope === "week") {
+    return data.weeks;
+  }
+
+  if (scope === "month") {
+    return data.months;
+  }
+
+  return data.days;
+}
+
+function getViewedPlanKey() {
+  if (currentPlanScope === "week") {
+    return getWeekKey(viewedDate);
+  }
+
+  if (currentPlanScope === "month") {
+    return getMonthKey(viewedDate);
+  }
+
+  return viewedDateKey;
+}
+
+function getViewedPlanStateKey() {
+  return `${currentPlanScope}:${getViewedPlanKey()}`;
+}
+
 function repairData(value: DaynoteData | null | undefined): DaynoteData {
   const source = value ?? createEmptyData();
   const repaired: DaynoteData = {
     days: {},
+    weeks: {},
+    months: {},
     settings: {
       theme: typeof source.settings?.theme === "string" && source.settings.theme.trim()
         ? source.settings.theme.trim()
@@ -849,12 +1057,18 @@ function repairData(value: DaynoteData | null | undefined): DaynoteData {
     },
   };
 
-  for (const [date, day] of Object.entries(source.days ?? {})) {
-    const tasks = Array.isArray((day as DayPlan | undefined)?.tasks) ? (day as DayPlan).tasks : [];
-    repaired.days[date] = { tasks: repairTasks(tasks) };
-  }
+  repairPlanMap(source.days, repaired.days);
+  repairPlanMap(source.weeks, repaired.weeks);
+  repairPlanMap(source.months, repaired.months);
 
   return repaired;
+}
+
+function repairPlanMap(source: PlanMap | undefined, target: PlanMap) {
+  for (const [key, plan] of Object.entries(source ?? {})) {
+    const tasks = Array.isArray((plan as DayPlan | undefined)?.tasks) ? (plan as DayPlan).tasks : [];
+    target[key] = { tasks: repairTasks(tasks) };
+  }
 }
 
 function repairTasks(tasks: Array<Partial<Task> | null | undefined>) {
@@ -966,6 +1180,8 @@ function getNextOrderInGroup(tasks: Task[], done: boolean, ignoredTaskId: string
 function createEmptyData(): DaynoteData {
   return {
     days: {},
+    weeks: {},
+    months: {},
     settings: {
       theme: "jade",
     },
@@ -999,8 +1215,45 @@ function addDays(date: Date, dayOffset: number) {
   return nextDate;
 }
 
+function addMonths(date: Date, monthOffset: number) {
+  const nextDate = startOfLocalDay(date);
+  const targetDay = nextDate.getDate();
+
+  nextDate.setDate(1);
+  nextDate.setMonth(nextDate.getMonth() + monthOffset);
+  nextDate.setDate(Math.min(targetDay, getDaysInMonth(nextDate)));
+
+  return nextDate;
+}
+
+function addPlanOffset(date: Date, scope: PlanScope, offset: number) {
+  if (scope === "week") {
+    return addDays(date, offset * 7);
+  }
+
+  if (scope === "month") {
+    return addMonths(date, offset);
+  }
+
+  return addDays(date, offset);
+}
+
+function getDaysInMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
 function getDayOffset(date: Date) {
   return Math.round((startOfLocalDay(date).getTime() - startOfLocalDay(new Date()).getTime()) / DAY_IN_MS);
+}
+
+function getWeekOffset(date: Date) {
+  return Math.round((getWeekStart(date).getTime() - getWeekStart(new Date()).getTime()) / WEEK_IN_MS);
+}
+
+function getMonthOffset(date: Date) {
+  const today = new Date();
+
+  return (date.getFullYear() - today.getFullYear()) * 12 + date.getMonth() - today.getMonth();
 }
 
 function getRelativeDateLabel(date: Date) {
@@ -1034,6 +1287,19 @@ function formatCalendarDate(date: Date) {
   return new Intl.DateTimeFormat(LOCALE, options).format(date);
 }
 
+function formatWeekRangeDate(date: Date, includeYear: boolean) {
+  const options: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+  };
+
+  if (includeYear) {
+    options.year = "numeric";
+  }
+
+  return new Intl.DateTimeFormat(LOCALE, options).format(date);
+}
+
 function formatWeekday(date: Date) {
   return new Intl.DateTimeFormat(LOCALE, {
     weekday: "long",
@@ -1041,6 +1307,14 @@ function formatWeekday(date: Date) {
 }
 
 function formatReadableViewedDate() {
+  if (currentPlanScope === "week") {
+    return `${formatShortViewedDate()} ${formatWeekRange(viewedDate, true)}`;
+  }
+
+  if (currentPlanScope === "month") {
+    return `${formatShortViewedDate()} ${formatMonthLabel(viewedDate)}`;
+  }
+
   const relativeLabel = getRelativeDateLabel(viewedDate);
   const dateLabel = formatCalendarDate(viewedDate);
 
@@ -1048,10 +1322,54 @@ function formatReadableViewedDate() {
 }
 
 function formatShortViewedDate() {
+  if (currentPlanScope === "week") {
+    const weekOffset = getWeekOffset(viewedDate);
+
+    if (weekOffset === 0) {
+      return "本周";
+    }
+
+    if (weekOffset === 1) {
+      return "下周";
+    }
+
+    if (weekOffset === -1) {
+      return "上周";
+    }
+
+    return "这一周";
+  }
+
+  if (currentPlanScope === "month") {
+    const monthOffset = getMonthOffset(viewedDate);
+
+    if (monthOffset === 0) {
+      return "本月";
+    }
+
+    if (monthOffset === 1) {
+      return "下月";
+    }
+
+    if (monthOffset === -1) {
+      return "上月";
+    }
+
+    return "这个月";
+  }
+
   return getRelativeDateLabel(viewedDate) ?? "这一天";
 }
 
 function getInputPlaceholder() {
+  if (currentPlanScope === "week") {
+    return "写下一件这周要推进的事";
+  }
+
+  if (currentPlanScope === "month") {
+    return "写下一件这个月要推进的事";
+  }
+
   const dayOffset = getDayOffset(viewedDate);
 
   if (dayOffset === 0) {
@@ -1067,6 +1385,64 @@ function getInputPlaceholder() {
   }
 
   return dayOffset > 0 ? "安排这一天的计划" : "补记这一天的计划";
+}
+
+function getWeekStart(date: Date) {
+  const weekStart = startOfLocalDay(date);
+  const day = weekStart.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+
+  weekStart.setDate(weekStart.getDate() + mondayOffset);
+
+  return weekStart;
+}
+
+function getWeekEnd(date: Date) {
+  return addDays(getWeekStart(date), 6);
+}
+
+function getWeekKey(date: Date) {
+  return toIsoDate(getWeekStart(date));
+}
+
+function getMonthKey(date: Date) {
+  return toIsoDate(date).slice(0, 7);
+}
+
+function formatWeekRange(date: Date, alwaysIncludeYear = false) {
+  const start = getWeekStart(date);
+  const end = getWeekEnd(date);
+  const includeStartYear = alwaysIncludeYear || start.getFullYear() !== end.getFullYear();
+  const includeEndYear = alwaysIncludeYear || end.getFullYear() !== new Date().getFullYear();
+
+  return `${formatWeekRangeDate(start, includeStartYear)}-${formatWeekRangeDate(end, includeEndYear)}`;
+}
+
+function formatWeekTitle(date: Date) {
+  return `${formatShortViewedDate()} · ${formatWeekRange(date)}`;
+}
+
+function formatMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat(LOCALE, {
+    year: "numeric",
+    month: "long",
+  }).format(date);
+}
+
+function formatMonthTitle(date: Date) {
+  return `${formatShortViewedDate()} · ${formatMonthLabel(date)}`;
+}
+
+function getNavigationLabel(offset: -1 | 1) {
+  if (currentPlanScope === "week") {
+    return `${offset < 0 ? "上一周" : "下一周"}（Alt+${offset < 0 ? "Left" : "Right"}）`;
+  }
+
+  if (currentPlanScope === "month") {
+    return `${offset < 0 ? "上一月" : "下一月"}（Alt+${offset < 0 ? "Left" : "Right"}）`;
+  }
+
+  return `${offset < 0 ? "上一天" : "下一天"}（Alt+${offset < 0 ? "Left" : "Right"}）`;
 }
 
 function focusTask(taskId: string) {
@@ -1195,6 +1571,10 @@ function isWindowDragBlockedTarget(target: Element) {
 
 function isImportance(value: string | undefined): value is Importance {
   return value === "low" || value === "medium" || value === "high";
+}
+
+function isPlanScope(value: string | undefined): value is PlanScope {
+  return value === "week" || value === "day" || value === "month";
 }
 
 function isHideToTrayShortcut(event: KeyboardEvent) {

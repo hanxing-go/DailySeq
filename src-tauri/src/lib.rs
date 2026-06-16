@@ -22,6 +22,10 @@ struct DaynoteData {
     #[serde(default)]
     days: BTreeMap<String, DayPlan>,
     #[serde(default)]
+    weeks: BTreeMap<String, DayPlan>,
+    #[serde(default)]
+    months: BTreeMap<String, DayPlan>,
+    #[serde(default)]
     settings: Settings,
 }
 
@@ -60,6 +64,8 @@ impl Default for DaynoteData {
     fn default() -> Self {
         Self {
             days: BTreeMap::new(),
+            weeks: BTreeMap::new(),
+            months: BTreeMap::new(),
             settings: Settings::default(),
         }
     }
@@ -79,42 +85,48 @@ impl DaynoteData {
             self.settings.theme = DEFAULT_THEME.to_string();
         }
 
-        for (date, day) in self.days.iter_mut() {
-            for (index, task) in day.tasks.iter_mut().enumerate() {
-                task.id = task.id.trim().to_string();
-                task.text = task.text.trim().to_string();
+        repair_plan_map("day", &mut self.days);
+        repair_plan_map("week", &mut self.weeks);
+        repair_plan_map("month", &mut self.months);
 
-                if task.id.is_empty() && !task.text.is_empty() {
-                    task.id = format!("repaired-{date}-{index}");
-                }
+        self
+    }
+}
 
-                if task.importance.trim().is_empty() {
-                    task.importance = DEFAULT_IMPORTANCE.to_string();
-                }
+fn repair_plan_map(scope: &str, plans: &mut BTreeMap<String, DayPlan>) {
+    for (key, plan) in plans.iter_mut() {
+        for (index, task) in plan.tasks.iter_mut().enumerate() {
+            task.id = task.id.trim().to_string();
+            task.text = task.text.trim().to_string();
 
-                if !matches!(task.importance.as_str(), "low" | "medium" | "high") {
-                    task.importance = DEFAULT_IMPORTANCE.to_string();
-                }
-
-                if task.created_at.trim().is_empty() {
-                    task.created_at = default_timestamp();
-                }
-
-                if !task.done {
-                    task.completed_at = None;
-                }
+            if task.id.is_empty() && !task.text.is_empty() {
+                task.id = format!("repaired-{scope}-{key}-{index}");
             }
 
-            day.tasks
-                .retain(|task| !task.id.trim().is_empty() && !task.text.is_empty());
-            day.tasks.sort_by_key(|task| task.order);
+            if task.importance.trim().is_empty() {
+                task.importance = DEFAULT_IMPORTANCE.to_string();
+            }
 
-            for (index, task) in day.tasks.iter_mut().enumerate() {
-                task.order = index as u32;
+            if !matches!(task.importance.as_str(), "low" | "medium" | "high") {
+                task.importance = DEFAULT_IMPORTANCE.to_string();
+            }
+
+            if task.created_at.trim().is_empty() {
+                task.created_at = default_timestamp();
+            }
+
+            if !task.done {
+                task.completed_at = None;
             }
         }
 
-        self
+        plan.tasks
+            .retain(|task| !task.id.trim().is_empty() && !task.text.is_empty());
+        plan.tasks.sort_by_key(|task| task.order);
+
+        for (index, task) in plan.tasks.iter_mut().enumerate() {
+            task.order = index as u32;
+        }
     }
 }
 

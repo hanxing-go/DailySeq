@@ -39,15 +39,15 @@ The main window is a compact always-on-top note panel, not a full dashboard. It 
 - `Command+Option+D`: show or hide DayNote on macOS.
 - `Esc`: hide the visible DayNote window to the tray/menu bar.
 - `Ctrl+Enter`: add the current task.
-- `Alt+Left`: previous day.
-- `Alt+Right`: next day.
+- `Alt+Left`: previous day, week, or month for the active plan view.
+- `Alt+Right`: next day, week, or month for the active plan view.
 - `Ctrl+1`, `Ctrl+2`, `Ctrl+3`: set selected task importance to low, medium, high.
 - `Space`: toggle selected task completion when the list has focus.
 - `Delete`: remove selected task.
 
 ## Data Model
 
-Persist plans by ISO date:
+Persist plans by day, week, and month keys:
 
 ```json
 {
@@ -66,13 +66,23 @@ Persist plans by ISO date:
       ]
     }
   },
+  "weeks": {
+    "2026-06-15": {
+      "tasks": []
+    }
+  },
+  "months": {
+    "2026-06": {
+      "tasks": []
+    }
+  },
   "settings": {
     "theme": "jade"
   }
 }
 ```
 
-The app should tolerate missing or older fields and repair them in memory before saving. Importance defaults to `medium` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows stored task order.
+The `days` map uses local ISO date keys. The `weeks` map uses the local Monday start date for the viewed week, and the `months` map uses `YYYY-MM`. The app should tolerate missing or older fields, including old data that only has `days`, and repair them in memory before saving. Importance defaults to `medium` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows stored task order.
 
 ## Feature Milestones
 
@@ -133,14 +143,19 @@ Each milestone must be implemented and committed separately.
 ## Date Navigation Notes
 
 - The main panel always reflects the currently viewed ISO date key, not just today.
-- Viewing an empty past or future day does not create a new saved day until the user edits that day.
+- The top segmented control switches between Week, Day, and Month plans. Day is the default view.
+- In Day view, the main panel reflects the currently viewed ISO date key.
+- In Week view, the current `viewedDate` is bound to its local Monday-start week key. Previous / next navigation moves the anchor date by seven days.
+- In Month view, the current `viewedDate` is bound to its `YYYY-MM` month key. Previous / next navigation moves the anchor date by one month and clamps month-end dates to valid days.
+- Switching back to Day view shows the current anchor date selected by prior week/month navigation.
+- Viewing an empty past or future day, week, or month does not create a new saved plan until the user edits that plan.
 - When load failure protection is active, users can still browse dates and read empty states, but task edits, ordering, and saves remain blocked.
 
 ## UI Polish Notes
 
 - The visual direction is fixed: warm paper surface, jade primary controls, with small cinnabar and gold accents.
 - Task add and completion feedback are short, one-shot transitions only; there are no continuous motion loops.
-- A full-day completion reward appears once when a day transitions from not-all-done to all-done, and it is not retriggered just by revisiting the same completed date.
+- A completion reward appears once when the active day, week, or month plan transitions from not-all-done to all-done, and it is not retriggered just by revisiting the same completed plan.
 
 ## Verification
 
