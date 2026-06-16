@@ -68,7 +68,7 @@ button:disabled {
   isolation: isolate;
   width: min(100%, 380px);
   height: 100%;
-  min-height: 440px;
+  min-height: min(440px, 100%);
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -88,6 +88,13 @@ button:disabled {
   transition:
     border-color 180ms ease,
     box-shadow 180ms ease;
+}
+
+.note-header,
+.composer,
+.status-message,
+.all-done-reward {
+  flex: 0 0 auto;
 }
 
 .note-shell::before {
@@ -343,8 +350,8 @@ h1 {
 }
 
 .empty-state {
-  flex: 1;
-  min-height: 206px;
+  flex: 1 1 0;
+  min-height: 0;
   display: grid;
   align-content: center;
   justify-items: center;
@@ -355,6 +362,7 @@ h1 {
   color: var(--text-soft);
   background: rgb(255 253 246 / 43%);
   text-align: center;
+  overflow: hidden;
 }
 
 .empty-mark {
@@ -384,15 +392,36 @@ h1 {
 }
 
 .task-list {
-  flex: 1;
+  flex: 1 1 0;
+  width: 100%;
   min-height: 0;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 2px 2px 4px;
+  padding: 2px 8px 4px 2px;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgb(31 128 109 / 32%) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   list-style: none;
+}
+
+.task-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.task-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(31 128 109 / 32%);
+  background-clip: content-box;
 }
 
 .task-list[hidden],
@@ -402,8 +431,11 @@ h1 {
 
 .task-item {
   position: relative;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) 30px;
+  width: 100%;
+  min-width: 0;
   gap: 10px;
   align-items: center;
   min-height: 54px;
@@ -799,7 +831,7 @@ h1 {
   }
 
   .note-shell {
-    min-height: 412px;
+    min-height: min(412px, 100%);
     padding: 18px;
   }
 

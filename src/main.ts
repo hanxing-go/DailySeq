@@ -263,6 +263,7 @@ taskListElement.addEventListener("dragover", (event) => {
   const target = resolveDropTarget(event);
 
   if (!target) {
+    setDropTarget(null, "before");
     return;
   }
 
@@ -358,10 +359,11 @@ async function addTask() {
     done: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
-    order: tasks.length,
+    order: getNextOrderInGroup(tasks, false),
   };
 
   tasks.push(task);
+  sortAndResequenceTasks(tasks);
   taskInputElement.value = "";
   focusedTaskId = task.id;
   markTaskAsAdded(task.id);
@@ -385,6 +387,8 @@ async function toggleTask(taskId: string | null) {
   const wasAllDone = getRecordedAllDoneState();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
+  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.id);
+  sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   if (task.done) {
     markTaskAsCompleted(task.id);
@@ -438,7 +442,7 @@ async function deleteTask(taskId: string | null) {
     clearCompletedFeedback();
   }
   tasks.splice(index, 1);
-  resequenceTasks(tasks);
+  sortAndResequenceTasks(tasks);
   focusedTaskId = tasks[Math.min(index, tasks.length - 1)]?.id ?? null;
   render();
   const shouldReward = recordAllDoneTransition(wasAllDone);
@@ -879,7 +883,13 @@ function repairTasks(tasks: Array<Partial<Task> | null | undefined>) {
       };
     })
     .filter((task) => task.id && task.text)
-    .sort((first, second) => first.order - second.order || first.sourceIndex - second.sourceIndex)
+    .sort((first, second) => {
+      if (first.done !== second.done) {
+        return first.done ? 1 : -1;
+      }
+
+      return first.order - second.order || first.sourceIndex - second.sourceIndex;
+    })
     .map(({ sourceIndex: _sourceIndex, ...task }) => task);
 
   resequenceTasks(repaired);
@@ -897,6 +907,10 @@ function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosi
   const targetIndex = tasks.findIndex((task) => task.id === targetTaskId);
 
   if (fromIndex === -1 || targetIndex === -1 || fromIndex === targetIndex) {
+    return false;
+  }
+
+  if (tasks[fromIndex].done !== tasks[targetIndex].done) {
     return false;
   }
 
@@ -926,6 +940,27 @@ function resequenceTasks(tasks: Task[]) {
   tasks.forEach((task, index) => {
     task.order = index;
   });
+}
+
+function sortAndResequenceTasks(tasks: Task[]) {
+  tasks.sort((first, second) => {
+    if (first.done !== second.done) {
+      return first.done ? 1 : -1;
+    }
+
+    return first.order - second.order;
+  });
+  resequenceTasks(tasks);
+}
+
+function getNextOrderInGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
+  return tasks.reduce((nextOrder, task) => {
+    if (task.id === ignoredTaskId || task.done !== done) {
+      return nextOrder;
+    }
+
+    return Math.max(nextOrder, task.order + 1);
+  }, 0);
 }
 
 function createEmptyData(): DaynoteData {
@@ -1059,7 +1094,7 @@ function resolveDropTarget(event: DragEvent) {
 
   const taskId = taskItem.dataset.taskId ?? null;
 
-  if (!taskId || taskId === draggedTaskId) {
+  if (!taskId || taskId === draggedTaskId || !canDropOnTask(taskId)) {
     return null;
   }
 
@@ -1070,7 +1105,19 @@ function resolveDropTarget(event: DragEvent) {
 }
 
 function resolveEndDropTarget() {
-  const lastTaskItem = taskListElement.querySelector<HTMLElement>("[data-task-id]:last-child");
+  const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
+
+  if (!draggedTask) {
+    return null;
+  }
+
+  const groupTaskItems = Array.from(taskListElement.querySelectorAll<HTMLElement>("[data-task-id]")).filter((item) => {
+    const taskId = item.dataset.taskId ?? "";
+    const task = findTask(taskId);
+
+    return task && task.done === draggedTask.done;
+  });
+  const lastTaskItem = groupTaskItems.at(-1);
   const taskId = lastTaskItem?.dataset.taskId ?? null;
 
   if (!taskId || taskId === draggedTaskId) {
@@ -1078,6 +1125,13 @@ function resolveEndDropTarget() {
   }
 
   return { taskId, position: "after" as DropPosition };
+}
+
+function canDropOnTask(taskId: string) {
+  const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
+  const targetTask = findTask(taskId);
+
+  return Boolean(draggedTask && targetTask && draggedTask.done === targetTask.done);
 }
 
 function setDropTarget(taskId: string | null, position: DropPosition) {
