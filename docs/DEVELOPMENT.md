@@ -82,7 +82,7 @@ Persist plans by day, week, and month keys:
 }
 ```
 
-The `days` map uses local ISO date keys. The `weeks` map uses the local Monday start date for the viewed week, and the `months` map uses `YYYY-MM`. The app should tolerate missing or older fields, including old data that only has `days`, and repair them in memory before saving. Importance defaults to `medium` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows stored task order.
+The `days` map uses local ISO date keys. The `weeks` map uses the local Monday start date for the viewed week, and the `months` map uses `YYYY-MM`. The app should tolerate missing or older fields, including old data that only has `days`, and repair them in memory before saving. Importance defaults to `low` for new tasks and repaired tasks, and `order` is normalized on load so the visible list follows completion state, importance, and stored order.
 
 ## Feature Milestones
 
@@ -100,7 +100,7 @@ Each milestone must be implemented and committed separately.
    - Toggle completion.
    - Delete task.
    - Persist by day.
-   - Default new task importance to `medium` until importance controls are implemented.
+   - Default new task importance to `low` until importance controls are implemented.
    - Store the JSON file as `daynote.json` in the Tauri app data directory.
 
 3. Importance and ordering.
@@ -108,7 +108,7 @@ Each milestone must be implemented and committed separately.
    - Quick controls.
    - Keyboard shortcuts.
    - Drag reorder.
-   - The list order follows `order`, not importance.
+   - The list order follows completion state, then importance, then `order`.
    - Loading failures must block editing, importance changes, and drag saves.
 
 4. Date navigation.

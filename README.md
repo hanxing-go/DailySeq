@@ -179,15 +179,15 @@ To also build installers after verification:
 - If DayNote cannot load or parse the existing data file, the UI blocks editing and saving with a Chinese error message instead of overwriting the file with empty or new data.
 - Tasks are stored under local ISO date keys in the `days` map, Monday week-start ISO keys in the `weeks` map, and `YYYY-MM` keys in the `months` map.
 - Older data files that only contain `days` remain valid; missing `weeks` and `months` maps are repaired in memory before saving.
-- New tasks use `importance: "medium"` by default.
+- New tasks use `importance: "low"` by default.
 - Add, toggle complete, delete, importance changes, and manual ordering all apply to the active day, week, or month plan.
 - Keyboard support: `Esc` hides DayNote to the tray/menu bar, `Ctrl+Enter` adds the typed task, `Alt+Left` / `Alt+Right` move to the previous / next day, week, or month for the active plan view when focus is not in a text field, `Space` toggles a focused task, `Delete` removes a focused task, and `Ctrl+1` / `Ctrl+2` / `Ctrl+3` set focused task importance to low / medium / high.
 
 ## Importance and Ordering
 
 - Each task has a lightweight low / medium / high importance control shown directly on the task row.
-- Click an importance segment to save that level immediately. Importance is visual metadata only; the list does not auto-sort by importance.
-- Drag a task row and drop it above or below another task to change its manual order. DayNote resequences the `order` field and persists the new order after the drop.
+- Click an importance segment to save that level immediately. The list auto-sorts unfinished and completed tasks by high, medium, then low importance.
+- Drag a task row and drop it above or below another task in the same completion and importance group to change its manual order. DayNote resequences the `order` field and persists the new order after the drop.
 - If loading `daynote.json` fails, importance controls and drag sorting are disabled along with other editing actions to protect the existing file from being overwritten.
 
 ## Date Navigation

@@ -6,7 +6,7 @@ type Importance = "low" | "medium" | "high";
 type DropPosition = "before" | "after";
 type PlanScope = "week" | "day" | "month";
 
-const DEFAULT_IMPORTANCE: Importance = "medium";
+const DEFAULT_IMPORTANCE: Importance = "low";
 const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const WEEK_IN_MS = 7 * DAY_IN_MS;
@@ -28,6 +28,11 @@ const IMPORTANCE_LABELS: Record<Importance, string> = {
   low: "低",
   medium: "中",
   high: "高",
+};
+const IMPORTANCE_SORT_ORDER: Record<Importance, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
 };
 
 interface Task {
@@ -389,7 +394,7 @@ async function addTask() {
     done: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
-    order: getNextOrderInGroup(tasks, false),
+    order: getNextOrderInGroup(tasks, false, DEFAULT_IMPORTANCE),
   };
 
   tasks.push(task);
@@ -417,7 +422,7 @@ async function toggleTask(taskId: string | null) {
   const wasAllDone = getRecordedAllDoneState();
   task.done = !task.done;
   task.completedAt = task.done ? new Date().toISOString() : null;
-  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.id);
+  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.importance, task.id);
   sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   if (task.done) {
@@ -446,6 +451,8 @@ async function setTaskImportance(taskId: string, importance: Importance) {
   }
 
   task.importance = importance;
+  task.order = getNextOrderInGroup(getViewedTasks(), task.done, task.importance, task.id);
+  sortAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   render();
   await persist(`已设为${IMPORTANCE_LABELS[importance]}重要性`);
@@ -1138,11 +1145,7 @@ function repairTasks(tasks: Array<Partial<Task> | null | undefined>) {
     })
     .filter((task) => task.id && task.text)
     .sort((first, second) => {
-      if (first.done !== second.done) {
-        return first.done ? 1 : -1;
-      }
-
-      return first.order - second.order || first.sourceIndex - second.sourceIndex;
+      return compareTasksByListOrder(first, second) || first.sourceIndex - second.sourceIndex;
     })
     .map(({ sourceIndex: _sourceIndex, ...task }) => task);
 
@@ -1164,7 +1167,7 @@ function moveTask(sourceTaskId: string, targetTaskId: string, position: DropPosi
     return false;
   }
 
-  if (tasks[fromIndex].done !== tasks[targetIndex].done) {
+  if (!tasksBelongToSameOrderGroup(tasks[fromIndex], tasks[targetIndex])) {
     return false;
   }
 
@@ -1197,19 +1200,31 @@ function resequenceTasks(tasks: Task[]) {
 }
 
 function sortAndResequenceTasks(tasks: Task[]) {
-  tasks.sort((first, second) => {
-    if (first.done !== second.done) {
-      return first.done ? 1 : -1;
-    }
-
-    return first.order - second.order;
-  });
+  tasks.sort(compareTasksByListOrder);
   resequenceTasks(tasks);
 }
 
-function getNextOrderInGroup(tasks: Task[], done: boolean, ignoredTaskId: string | null = null) {
+function compareTasksByListOrder(first: Pick<Task, "done" | "importance" | "order">, second: Pick<Task, "done" | "importance" | "order">) {
+  if (first.done !== second.done) {
+    return first.done ? 1 : -1;
+  }
+
+  const importanceDelta = IMPORTANCE_SORT_ORDER[first.importance] - IMPORTANCE_SORT_ORDER[second.importance];
+
+  if (importanceDelta !== 0) {
+    return importanceDelta;
+  }
+
+  return first.order - second.order;
+}
+
+function tasksBelongToSameOrderGroup(first: Task, second: Task) {
+  return first.done === second.done && first.importance === second.importance;
+}
+
+function getNextOrderInGroup(tasks: Task[], done: boolean, importance: Importance, ignoredTaskId: string | null = null) {
   return tasks.reduce((nextOrder, task) => {
-    if (task.id === ignoredTaskId || task.done !== done) {
+    if (task.id === ignoredTaskId || task.done !== done || task.importance !== importance) {
       return nextOrder;
     }
 
@@ -1540,7 +1555,7 @@ function resolveEndDropTarget() {
     const taskId = item.dataset.taskId ?? "";
     const task = findTask(taskId);
 
-    return task && task.done === draggedTask.done;
+    return task && tasksBelongToSameOrderGroup(task, draggedTask);
   });
   const lastTaskItem = groupTaskItems.at(-1);
   const taskId = lastTaskItem?.dataset.taskId ?? null;
@@ -1556,7 +1571,7 @@ function canDropOnTask(taskId: string) {
   const draggedTask = draggedTaskId ? findTask(draggedTaskId) : null;
   const targetTask = findTask(taskId);
 
-  return Boolean(draggedTask && targetTask && draggedTask.done === targetTask.done);
+  return Boolean(draggedTask && targetTask && tasksBelongToSameOrderGroup(draggedTask, targetTask));
 }
 
 function setDropTarget(taskId: string | null, position: DropPosition) {
