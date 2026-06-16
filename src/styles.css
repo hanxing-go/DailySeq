@@ -23,12 +23,16 @@
   --accent-deep: #17695a;
   --accent-soft: rgb(31 128 109 / 10%);
   --accent-strong: rgb(31 128 109 / 22%);
+  --action: #5d7196;
+  --action-deep: #465b80;
+  --action-soft: rgb(93 113 150 / 12%);
+  --action-strong: rgb(93 113 150 / 24%);
   --cinnabar: #a9473a;
   --cinnabar-soft: rgb(169 71 58 / 11%);
   --gold: #c8902e;
   --gold-soft: rgb(200 144 46 / 13%);
-  --low: #c58a2e;
-  --low-soft: rgb(197 138 46 / 14%);
+  --low: #74a5c8;
+  --low-soft: rgb(116 165 200 / 15%);
   --medium: #1f806d;
   --medium-soft: rgb(31 128 109 / 13%);
   --high: #a9473a;
@@ -88,7 +92,7 @@ button:disabled {
     box-shadow 180ms ease;
 }
 
-.scope-tabs,
+.top-bar,
 .note-header,
 .composer,
 .status-message,
@@ -113,15 +117,82 @@ button:disabled {
     inset 0 1px 0 rgb(255 255 255 / 86%);
 }
 
+.top-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.window-actions {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 28px);
+  gap: 5px;
+  align-items: center;
+}
+
+.chrome-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #6d746f;
+  background: rgb(255 253 246 / 74%);
+  box-shadow:
+    inset 0 0 0 1px rgb(60 82 69 / 10%),
+    0 3px 8px rgb(70 58 34 / 5%);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.chrome-button span {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.chrome-button:hover {
+  background: rgb(255 253 246 / 96%);
+  transform: translateY(-1px);
+}
+
+.settings-button[aria-disabled="true"] {
+  color: #87908b;
+  background: rgb(255 253 246 / 60%);
+  opacity: 1;
+  cursor: default;
+}
+
+.settings-button[aria-disabled="true"]:hover {
+  color: #87908b;
+  background: rgb(255 253 246 / 60%);
+  box-shadow:
+    inset 0 0 0 1px rgb(60 82 69 / 10%),
+    0 3px 8px rgb(70 58 34 / 5%);
+  transform: none;
+}
+
+.close-button:hover {
+  color: var(--cinnabar);
+  box-shadow:
+    inset 0 0 0 1px rgb(169 71 58 / 18%),
+    0 4px 10px rgb(169 71 58 / 8%);
+}
+
 .scope-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
-  min-height: 34px;
+  min-height: 32px;
   padding: 3px;
-  border: 1px solid rgb(60 82 69 / 12%);
+  border: 1px solid rgb(68 79 99 / 12%);
   border-radius: 999px;
-  background: rgb(255 253 246 / 56%);
+  background: rgb(255 253 246 / 62%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 64%);
   user-select: none;
 }
@@ -148,15 +219,15 @@ button:disabled {
 }
 
 .scope-tab:hover {
-  color: var(--accent-deep);
+  color: var(--action-deep);
   background: rgb(255 253 246 / 86%);
 }
 
 .scope-tab.is-active {
   color: #ffffff;
-  background: linear-gradient(180deg, #328d7a, var(--accent-deep));
+  background: linear-gradient(180deg, #6f82a7, var(--action-deep));
   box-shadow:
-    0 4px 10px rgb(32 104 91 / 14%),
+    0 4px 10px rgb(70 88 125 / 16%),
     inset 0 1px 0 rgb(255 255 255 / 20%);
 }
 
@@ -167,39 +238,41 @@ button:disabled {
 
 .note-header {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 42px;
-  grid-template-rows: 28px 42px;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
   align-items: center;
-  column-gap: 12px;
-  row-gap: 2px;
-  min-height: 72px;
+  column-gap: 10px;
+  min-height: 60px;
   user-select: none;
 }
 
 #previous-day {
   grid-column: 1;
-  grid-row: 2;
 }
 
 .date-stack {
   grid-column: 2;
-  grid-row: 1 / 3;
   display: grid;
   justify-items: center;
-  gap: 2px;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
 }
 
 #next-day {
   grid-column: 3;
-  grid-row: 2;
 }
 
 .weekday {
   max-width: 100%;
-  color: var(--text-soft);
-  font-size: 13px;
+  min-height: 21px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgb(93 113 150 / 14%);
+  border-radius: 999px;
+  color: #617088;
+  background: rgb(255 253 246 / 58%);
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
   overflow: hidden;
@@ -211,8 +284,8 @@ h1 {
   max-width: 100%;
   margin: 0;
   color: var(--text-main);
-  font-size: 28px;
-  line-height: 1.12;
+  font-size: 30px;
+  line-height: 1;
   font-weight: 800;
   letter-spacing: 0;
   overflow: hidden;
@@ -222,29 +295,30 @@ h1 {
 
 .note-shell[data-plan-scope="week"] h1,
 .note-shell[data-plan-scope="month"] h1 {
-  font-size: 24px;
+  font-size: 26px;
 }
 
 .icon-button {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 999px;
   color: var(--text-main);
-  background: rgb(255 253 246 / 72%);
+  background: rgb(255 253 246 / 70%);
   box-shadow:
-    inset 0 0 0 1px rgb(60 82 69 / 10%),
-    0 4px 10px rgb(70 58 34 / 6%);
+    inset 0 0 0 1px rgb(68 79 99 / 10%),
+    0 3px 8px rgb(70 58 34 / 5%);
   cursor: pointer;
   transition:
     background-color 140ms ease,
+    color 140ms ease,
     transform 140ms ease;
 }
 
 .icon-button:hover {
-  color: var(--accent-deep);
+  color: var(--action-deep);
   background: rgb(255 253 246 / 96%);
   transform: translateY(-1px);
 }
@@ -256,22 +330,8 @@ h1 {
 
 .icon-button span {
   transform: translateY(-1px);
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1;
-}
-
-.tray-button {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  width: 28px;
-  height: 28px;
-  align-self: start;
-  color: var(--text-soft);
-}
-
-.tray-button span {
-  font-size: 20px;
 }
 
 .composer {
@@ -297,9 +357,9 @@ h1 {
 }
 
 .composer input:focus {
-  border-color: rgb(31 128 109 / 58%);
+  border-color: rgb(93 113 150 / 48%);
   background: rgb(255 253 246 / 96%);
-  box-shadow: 0 0 0 4px rgb(31 128 109 / 12%);
+  box-shadow: 0 0 0 4px var(--action-soft);
 }
 
 .composer button {
@@ -308,21 +368,21 @@ h1 {
   border: 0;
   border-radius: 14px;
   color: #ffffff;
-  background: linear-gradient(180deg, #2f8b78, var(--accent-deep));
+  background: linear-gradient(180deg, #6d7fa1, var(--action-deep));
   cursor: pointer;
-  box-shadow: 0 10px 20px rgb(32 104 91 / 20%);
+  box-shadow: 0 10px 20px rgb(70 88 125 / 18%);
   transition:
     background-color 140ms ease,
     transform 140ms ease;
 }
 
 .composer button:hover {
-  background: linear-gradient(180deg, #287f6d, #155f51);
+  background: linear-gradient(180deg, #627496, #3f5376);
   transform: translateY(-1px);
 }
 
 .composer button:disabled {
-  background: #8fb8ae;
+  background: #a8b0bf;
   box-shadow: none;
   transform: none;
 }
@@ -527,14 +587,14 @@ h1 {
 .task-item[data-importance="low"] {
   --task-accent: var(--low);
   --task-accent-soft: var(--low-soft);
-  --task-accent-wash: rgb(197 138 46 / 6%);
-  --task-accent-line: rgb(197 138 46 / 22%);
-  --task-accent-shadow: rgb(197 138 46 / 7%);
-  --task-done-wash: rgb(197 138 46 / 4%);
-  --task-done-line: rgb(197 138 46 / 12%);
-  --task-done-rail: rgb(197 138 46 / 28%);
-  --importance-group-line: rgb(197 138 46 / 17%);
-  --importance-group-wash: rgb(197 138 46 / 5%);
+  --task-accent-wash: rgb(116 165 200 / 7%);
+  --task-accent-line: rgb(116 165 200 / 24%);
+  --task-accent-shadow: rgb(116 165 200 / 8%);
+  --task-done-wash: rgb(116 165 200 / 4%);
+  --task-done-line: rgb(116 165 200 / 13%);
+  --task-done-rail: rgb(116 165 200 / 30%);
+  --importance-group-line: rgb(116 165 200 / 18%);
+  --importance-group-wash: rgb(116 165 200 / 6%);
   --task-rail-width: 2px;
 }
 
@@ -778,11 +838,11 @@ h1 {
 .priority-low {
   --priority-color: var(--low);
   --priority-soft: var(--low-soft);
-  --priority-active: #9e6b22;
-  --priority-line: rgb(197 138 46 / 34%);
-  --priority-hover-line: rgb(197 138 46 / 24%);
-  --priority-ring: rgb(197 138 46 / 18%);
-  --priority-shadow: rgb(197 138 46 / 11%);
+  --priority-active: #3f7fa8;
+  --priority-line: rgb(116 165 200 / 36%);
+  --priority-hover-line: rgb(116 165 200 / 26%);
+  --priority-ring: rgb(116 165 200 / 20%);
+  --priority-shadow: rgb(116 165 200 / 12%);
 }
 
 .priority-medium {
@@ -1006,36 +1066,30 @@ h1 {
   }
 
   .scope-tabs {
-    min-height: 32px;
+    min-height: 30px;
   }
 
   .scope-tab {
-    height: 24px;
+    height: 23px;
     padding-inline: 5px;
     font-size: 11px;
   }
 
   .note-header {
-    grid-template-columns: 38px minmax(0, 1fr) 38px;
-    grid-template-rows: 26px 38px;
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
     column-gap: 8px;
-    min-height: 66px;
+    min-height: 58px;
   }
 
   h1,
   .note-shell[data-plan-scope="week"] h1,
   .note-shell[data-plan-scope="month"] h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .icon-button {
-    width: 38px;
-    height: 38px;
-  }
-
-  .tray-button {
-    width: 26px;
-    height: 26px;
+    width: 34px;
+    height: 34px;
   }
 
   .composer {

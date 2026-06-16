@@ -81,7 +81,7 @@ src-tauri/target/release/bundle/
 - Navigate to yesterday and tomorrow, edit a task, then return to today.
 - Press `Esc` while focus is in the task input and confirm the window stays visible.
 - Press `Esc` while focus is outside text editing and confirm the window hides to the tray/menu bar.
-- Click the header tray button and confirm the window hides to the tray/menu bar.
+- Click the top-left close button and confirm the window hides to the tray/menu bar.
 - Close the panel and confirm the app remains available from the tray/menu bar.
 - Quit and restart, then confirm saved tasks are still present.
 - Confirm unsigned build warnings are expected until signing/notarization is configured.

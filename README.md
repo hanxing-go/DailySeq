@@ -167,7 +167,7 @@ To also build installers after verification:
 - The window is transparent, undecorated, and draggable from the panel edge and blank shell areas.
 - Buttons, text fields, task cards, importance controls, delete/complete controls, and the task list scrollbar keep their normal interactions instead of starting a window drag.
 - Closing the window hides it so DayNote can remain resident in the tray/menu bar.
-- Use the header tray button or `Esc` to hide the visible window to the tray/menu bar.
+- Use the top-left close button or `Esc` to hide the visible window to the tray/menu bar.
 - The tray/menu-bar entry supports show/hide and quit.
 - The global shortcut is `Ctrl+Alt+D` on Windows/Linux. On macOS, the Rust registration maps to `Command+Option+D`, matching the platform preference from `docs/DEVELOPMENT.md`.
 

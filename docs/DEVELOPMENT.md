@@ -202,7 +202,7 @@ DayNote releases are built as native desktop artifacts. Users install those arti
    - Confirm the global shortcut toggles the panel.
    - Add, complete, delete, prioritize, reorder, and navigate dates.
    - Close the window and confirm tray/menu-bar show/hide and quit behavior.
-   - Press `Esc` or the header tray button and confirm the window hides to the tray/menu bar.
+   - Press `Esc` or the top-left close button and confirm the window hides to the tray/menu bar.
    - Restart the app and confirm `daynote.json` data persisted.
 
 ## Commit and Review Flow

@@ -505,7 +505,7 @@ async function hideToTray() {
   try {
     await invoke("hide_main_window");
   } catch (error) {
-    setStatus(`缩小至托盘失败：${formatError(error)}`, true);
+    setStatus(`关闭到托盘失败：${formatError(error)}`, true);
   }
 }
 
@@ -710,22 +710,21 @@ function renderDateHeader() {
   nextDayButtonElement.title = getNavigationLabel(1);
 
   if (currentPlanScope === "week") {
-    weekdayElement.textContent = "周计划";
-    dateTitleElement.textContent = formatWeekTitle(viewedDate);
+    weekdayElement.textContent = formatWeekRange(viewedDate);
+    dateTitleElement.textContent = `${formatShortViewedDate()}计划`;
     return;
   }
 
   if (currentPlanScope === "month") {
-    weekdayElement.textContent = "月计划";
-    dateTitleElement.textContent = formatMonthTitle(viewedDate);
+    weekdayElement.textContent = formatShortViewedDate();
+    dateTitleElement.textContent = formatMonthLabel(viewedDate);
     return;
   }
 
   const relativeLabel = getRelativeDateLabel(viewedDate);
-  const dateLabel = formatCalendarDate(viewedDate);
 
-  weekdayElement.textContent = formatWeekday(viewedDate);
-  dateTitleElement.textContent = relativeLabel ? `${relativeLabel} · ${dateLabel}` : dateLabel;
+  weekdayElement.textContent = relativeLabel ? `${relativeLabel} · ${formatWeekday(viewedDate)}` : formatWeekday(viewedDate);
+  dateTitleElement.textContent = formatCalendarDate(viewedDate);
 }
 
 function renderEmptyState() {
@@ -1275,29 +1274,21 @@ function getRelativeDateLabel(date: Date) {
 }
 
 function formatCalendarDate(date: Date) {
-  const options: Intl.DateTimeFormatOptions = {
-    month: "numeric",
-    day: "numeric",
-  };
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
 
-  if (date.getFullYear() !== new Date().getFullYear()) {
-    options.year = "numeric";
+  if (year !== new Date().getFullYear()) {
+    return `${year}年${month}月${day}日`;
   }
 
-  return new Intl.DateTimeFormat(LOCALE, options).format(date);
+  return `${month}月${day}日`;
 }
 
 function formatWeekRangeDate(date: Date, includeYear: boolean) {
-  const options: Intl.DateTimeFormatOptions = {
-    month: "numeric",
-    day: "numeric",
-  };
+  const year = includeYear ? `${date.getFullYear()}年` : "";
 
-  if (includeYear) {
-    options.year = "numeric";
-  }
-
-  return new Intl.DateTimeFormat(LOCALE, options).format(date);
+  return `${year}${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
 function formatWeekday(date: Date) {
@@ -1415,11 +1406,13 @@ function formatWeekRange(date: Date, alwaysIncludeYear = false) {
   const includeStartYear = alwaysIncludeYear || start.getFullYear() !== end.getFullYear();
   const includeEndYear = alwaysIncludeYear || end.getFullYear() !== new Date().getFullYear();
 
-  return `${formatWeekRangeDate(start, includeStartYear)}-${formatWeekRangeDate(end, includeEndYear)}`;
-}
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    const startYear = includeStartYear ? `${start.getFullYear()}年` : "";
 
-function formatWeekTitle(date: Date) {
-  return `${formatShortViewedDate()} · ${formatWeekRange(date)}`;
+    return `${startYear}${start.getMonth() + 1}月${start.getDate()}日 - ${end.getDate()}日`;
+  }
+
+  return `${formatWeekRangeDate(start, includeStartYear)}-${formatWeekRangeDate(end, includeEndYear)}`;
 }
 
 function formatMonthLabel(date: Date) {
@@ -1427,10 +1420,6 @@ function formatMonthLabel(date: Date) {
     year: "numeric",
     month: "long",
   }).format(date);
-}
-
-function formatMonthTitle(date: Date) {
-  return `${formatShortViewedDate()} · ${formatMonthLabel(date)}`;
 }
 
 function getNavigationLabel(offset: -1 | 1) {
@@ -1563,6 +1552,7 @@ function isWindowDragBlockedTarget(target: Element) {
         "[contenteditable='true']",
         "[data-task-id]",
         "#task-list",
+        ".top-bar",
         ".composer",
       ].join(", "),
     ),
