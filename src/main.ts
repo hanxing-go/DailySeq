@@ -5,8 +5,10 @@ import "./styles.css";
 type Importance = "low" | "medium" | "high";
 type DropPosition = "before" | "after";
 type PlanScope = "week" | "day" | "month";
+type ThemeId = "jade-paper" | "soft-blue" | "mint-paper";
 
 const DEFAULT_IMPORTANCE: Importance = "low";
+const DEFAULT_THEME: ThemeId = "jade-paper";
 const LOCALE = "zh-CN";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const WEEK_IN_MS = 7 * DAY_IN_MS;
@@ -40,6 +42,11 @@ const IMPORTANCE_SORT_ORDER: Record<Importance, number> = {
   medium: 1,
   low: 2,
 };
+const THEMES: Array<{ id: ThemeId; label: string }> = [
+  { id: "jade-paper", label: "纸感" },
+  { id: "soft-blue", label: "蓝白" },
+  { id: "mint-paper", label: "浅绿" },
+];
 
 interface Task {
   id: string;
@@ -62,7 +69,7 @@ interface DailySeqData {
   weeks: PlanMap;
   months: PlanMap;
   settings: {
-    theme: string;
+    theme: ThemeId;
   };
 }
 
@@ -117,6 +124,8 @@ const calendarPreviousMonthButtonElement = requireElement<HTMLButtonElement>("#c
 const calendarNextMonthButtonElement = requireElement<HTMLButtonElement>("#calendar-next-month");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
 const nextDayButtonElement = requireElement<HTMLButtonElement>("#next-day");
+const settingsButtonElement = requireElement<HTMLButtonElement>("#settings-button");
+const themeMenuElement = requireElement<HTMLElement>("#theme-menu");
 const hideToTrayButtonElement = requireElement<HTMLButtonElement>("#hide-to-tray");
 const composerElement = requireElement<HTMLFormElement>("#composer");
 const taskInputElement = requireElement<HTMLInputElement>("#task-input");
@@ -133,6 +142,8 @@ let priorityFlyoutTaskId: string | null = null;
 let priorityFlyoutHideTimer: number | null = null;
 
 noteShellElement.append(priorityFlyoutElement);
+renderThemeMenu();
+applyTheme();
 
 priorityFlyoutElement.addEventListener("pointerenter", () => {
   clearPriorityFlyoutHideTimer();
@@ -216,6 +227,33 @@ dateTitleButtonElement.addEventListener("click", () => {
   toggleDatePicker();
 });
 
+settingsButtonElement.addEventListener("click", () => {
+  toggleThemeMenu();
+});
+
+themeMenuElement.addEventListener("keydown", (event) => {
+  handleThemeMenuKeyDown(event);
+});
+
+themeMenuElement.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const themeButton = target.closest<HTMLButtonElement>("button[data-theme-id]");
+  const themeId = themeButton?.dataset.themeId;
+
+  if (!isThemeId(themeId)) {
+    return;
+  }
+
+  event.preventDefault();
+  hideThemeMenu();
+  void setTheme(themeId);
+});
+
 todayButtonElement.addEventListener("click", () => {
   hideDatePicker();
   goToToday();
@@ -253,6 +291,7 @@ hideToTrayButtonElement.addEventListener("click", () => {
 
 document.addEventListener("pointerdown", (event) => {
   closeDatePickerFromOutside(event);
+  closeThemeMenuFromOutside(event);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -263,6 +302,12 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && isDatePickerOpen()) {
     event.preventDefault();
     hideDatePicker({ restoreFocus: true });
+    return;
+  }
+
+  if (event.key === "Escape" && isThemeMenuOpen()) {
+    event.preventDefault();
+    hideThemeMenu({ restoreFocus: true });
     return;
   }
 
@@ -520,6 +565,7 @@ async function initialize() {
 
   try {
     data = repairData(await invoke<DailySeqData>("load_dailyseq_data"));
+    applyTheme();
     isLoading = false;
     isLoadBlocked = false;
     setStatus("");
@@ -704,6 +750,17 @@ async function persist(successMessage: string, options: { rerender?: boolean } =
   }
 }
 
+async function setTheme(theme: ThemeId) {
+  if (isLoading || isLoadBlocked || data.settings.theme === theme) {
+    return;
+  }
+
+  data.settings.theme = theme;
+  applyTheme();
+  renderThemeMenu();
+  await persist("已切换主题");
+}
+
 async function hideToTray() {
   try {
     await invoke("hide_main_window");
@@ -713,7 +770,9 @@ async function hideToTray() {
 }
 
 function render() {
+  applyTheme();
   renderScopeTabs();
+  renderThemeMenu();
   renderDateHeader();
   renderEmptyState();
   hidePriorityFlyout();
@@ -724,6 +783,149 @@ function render() {
   taskListElement.hidden = tasks.length === 0;
   taskListElement.setAttribute("aria-label", `${formatReadableViewedDate()}的计划`);
   taskListElement.replaceChildren(...tasks.map(renderTask));
+}
+
+function renderThemeMenu() {
+  themeMenuElement.replaceChildren(
+    ...THEMES.map(({ id, label }) => {
+      const button = document.createElement("button");
+      const isSelected = data.settings.theme === id;
+
+      button.type = "button";
+      button.className = "theme-option";
+      button.dataset.themeId = id;
+      button.setAttribute("role", "menuitemradio");
+      button.setAttribute("aria-checked", String(isSelected));
+      button.textContent = label;
+
+      const swatch = document.createElement("span");
+      swatch.className = "theme-swatch";
+      swatch.setAttribute("aria-hidden", "true");
+
+      button.prepend(swatch);
+
+      return button;
+    }),
+  );
+}
+
+function applyTheme() {
+  noteShellElement.dataset.theme = data.settings.theme;
+  settingsButtonElement.setAttribute("aria-expanded", String(isThemeMenuOpen()));
+}
+
+function toggleThemeMenu() {
+  if (isThemeMenuOpen()) {
+    hideThemeMenu({ restoreFocus: true });
+    return;
+  }
+
+  showThemeMenu();
+}
+
+function showThemeMenu() {
+  hideDatePicker();
+  renderThemeMenu();
+  themeMenuElement.hidden = false;
+  themeMenuElement.dataset.visible = "true";
+  settingsButtonElement.setAttribute("aria-expanded", "true");
+  getSelectedThemeButton()?.focus();
+}
+
+function hideThemeMenu(options: { restoreFocus?: boolean } = {}) {
+  if (!isThemeMenuOpen()) {
+    return;
+  }
+
+  themeMenuElement.hidden = true;
+  delete themeMenuElement.dataset.visible;
+  settingsButtonElement.setAttribute("aria-expanded", "false");
+
+  if (options.restoreFocus) {
+    settingsButtonElement.focus();
+  }
+}
+
+function isThemeMenuOpen() {
+  return !themeMenuElement.hidden;
+}
+
+function closeThemeMenuFromOutside(event: PointerEvent) {
+  if (!isThemeMenuOpen()) {
+    return;
+  }
+
+  const target = event.target;
+
+  if (!(target instanceof Node)) {
+    return;
+  }
+
+  if (themeMenuElement.contains(target) || settingsButtonElement.contains(target)) {
+    return;
+  }
+
+  hideThemeMenu();
+}
+
+function isThemeId(value: string | undefined): value is ThemeId {
+  return value === "jade-paper" || value === "soft-blue" || value === "mint-paper";
+}
+
+function normalizeTheme(value: unknown): ThemeId {
+  if (typeof value !== "string") {
+    return DEFAULT_THEME;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (trimmedValue === "jade") {
+    return "jade-paper";
+  }
+
+  if (trimmedValue === "mint" || trimmedValue === "mint-blue") {
+    return "mint-paper";
+  }
+
+  return isThemeId(trimmedValue) ? trimmedValue : DEFAULT_THEME;
+}
+
+function handleThemeMenuKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    hideThemeMenu({ restoreFocus: true });
+    return;
+  }
+
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
+    return;
+  }
+
+  event.preventDefault();
+
+  const buttons = getThemeButtons();
+  const activeIndex = buttons.findIndex((button) => button === document.activeElement);
+  let nextIndex = activeIndex;
+
+  if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = buttons.length - 1;
+  } else if (event.key === "ArrowDown") {
+    nextIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % buttons.length;
+  } else {
+    nextIndex = activeIndex < 0 ? buttons.length - 1 : (activeIndex - 1 + buttons.length) % buttons.length;
+  }
+
+  buttons[nextIndex]?.focus();
+}
+
+function getThemeButtons() {
+  return Array.from(themeMenuElement.querySelectorAll<HTMLButtonElement>("button[data-theme-id]"));
+}
+
+function getSelectedThemeButton() {
+  return getThemeButtons().find((button) => button.dataset.themeId === data.settings.theme) ?? getThemeButtons()[0] ?? null;
 }
 
 function renderTask(task: Task) {
@@ -810,6 +1012,7 @@ function toggleDatePicker() {
 }
 
 function showDatePicker() {
+  hideThemeMenu();
   calendarDisplayDate = startOfLocalDay(viewedDate);
   renderDatePicker();
   datePickerPopoverElement.hidden = false;
@@ -1390,9 +1593,7 @@ function repairData(value: DailySeqData | null | undefined): DailySeqData {
     weeks: {},
     months: {},
     settings: {
-      theme: typeof source.settings?.theme === "string" && source.settings.theme.trim()
-        ? source.settings.theme.trim()
-        : "jade",
+      theme: normalizeTheme(source.settings?.theme),
     },
   };
 
@@ -1547,7 +1748,7 @@ function createEmptyData(): DailySeqData {
     weeks: {},
     months: {},
     settings: {
-      theme: "jade",
+      theme: DEFAULT_THEME,
     },
   };
 }

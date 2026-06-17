@@ -13,7 +13,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_SHOW_HIDE_ID: &str = "show_hide";
 const TRAY_QUIT_ID: &str = "quit";
 const STORAGE_FILE_NAME: &str = "dailyseq.json";
-const DEFAULT_THEME: &str = "jade";
+const DEFAULT_THEME: &str = "jade-paper";
 const DEFAULT_IMPORTANCE: &str = "medium";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,9 +81,7 @@ impl Default for Settings {
 
 impl DailySeqData {
     fn repaired(mut self) -> Self {
-        if self.settings.theme.trim().is_empty() {
-            self.settings.theme = DEFAULT_THEME.to_string();
-        }
+        self.settings.theme = normalize_theme(&self.settings.theme);
 
         repair_plan_map("day", &mut self.days);
         repair_plan_map("week", &mut self.weeks);
@@ -371,6 +369,15 @@ fn default_importance() -> String {
 
 fn default_theme() -> String {
     DEFAULT_THEME.to_string()
+}
+
+fn normalize_theme(value: &str) -> String {
+    match value.trim() {
+        "jade" => DEFAULT_THEME.to_string(),
+        "jade-paper" | "soft-blue" | "mint-paper" => value.trim().to_string(),
+        "mint" | "mint-blue" => "mint-paper".to_string(),
+        _ => DEFAULT_THEME.to_string(),
+    }
 }
 
 fn default_timestamp() -> String {
