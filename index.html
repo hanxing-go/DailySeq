@@ -35,10 +35,47 @@
         </button>
         <div class="date-stack">
           <span id="weekday" class="weekday">今天</span>
-          <h1 id="date-title">DailySeq</h1>
-          <div class="date-tools" aria-label="日期工具">
-            <button id="today-button" class="date-tool-button" type="button">今天</button>
-            <input id="date-picker" class="date-picker" type="date" aria-label="选择日期" />
+          <div class="date-title-row">
+            <h1 class="date-title-heading">
+              <button
+                id="date-title-button"
+                class="date-title-button"
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-controls="date-picker-popover"
+              >
+                <span id="date-title" class="date-title-text">DailySeq</span>
+              </button>
+            </h1>
+          </div>
+          <div id="date-picker-popover" class="date-picker-popover" role="dialog" aria-label="选择日期" hidden>
+            <div class="calendar-header">
+              <span id="calendar-month-label" class="calendar-month-label"></span>
+              <div class="calendar-month-controls" aria-label="切换月份">
+                <button id="calendar-previous-month" class="calendar-nav-button" type="button" aria-label="上个月">
+                  <span aria-hidden="true">‹</span>
+                </button>
+                <button id="calendar-next-month" class="calendar-nav-button" type="button" aria-label="下个月">
+                  <span aria-hidden="true">›</span>
+                </button>
+              </div>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>一</span>
+              <span>二</span>
+              <span>三</span>
+              <span>四</span>
+              <span>五</span>
+              <span>六</span>
+              <span>日</span>
+            </div>
+            <div id="calendar-grid" class="calendar-grid"></div>
+            <div class="calendar-footer">
+              <button id="today-button" class="calendar-today-button" type="button" aria-label="回到今天" hidden>
+                回到今天
+              </button>
+            </div>
           </div>
         </div>
         <button id="next-day" class="icon-button nav-button" type="button" aria-label="下一天（Alt+Right）">
@@ -62,8 +99,36 @@
       <div id="all-done-reward" class="all-done-reward" aria-hidden="true" hidden></div>
 
       <section id="empty-state" class="empty-state" aria-label="空计划">
-        <div class="empty-mark" aria-hidden="true"></div>
-        <p id="empty-state-title">今天还很安静。</p>
+        <svg class="empty-mark" width="128" height="128" viewBox="0 0 512 512" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="empty-mark-shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#1E3A8A" flood-opacity="0.25" />
+            </filter>
+            <linearGradient id="empty-mark-bg1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#6EA8FF" />
+              <stop offset="100%" stop-color="#3D6FD6" />
+            </linearGradient>
+            <linearGradient id="empty-mark-bg2" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#8BB8FF" />
+              <stop offset="100%" stop-color="#4B79E6" />
+            </linearGradient>
+            <linearGradient id="empty-mark-front" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#F7FAFF" />
+              <stop offset="100%" stop-color="#E8F0FF" />
+            </linearGradient>
+          </defs>
+          <rect x="110" y="190" width="300" height="220" rx="28" fill="url(#empty-mark-bg1)" filter="url(#empty-mark-shadow)" />
+          <rect x="95" y="165" width="320" height="230" rx="28" fill="url(#empty-mark-bg2)" opacity="0.9" filter="url(#empty-mark-shadow)" />
+          <rect x="80" y="140" width="350" height="240" rx="28" fill="url(#empty-mark-front)" filter="url(#empty-mark-shadow)" />
+          <line x1="140" y1="200" x2="140" y2="320" stroke="#9BB7E6" stroke-width="4" stroke-linecap="round" />
+          <circle cx="140" cy="200" r="10" fill="#D9E6FF" stroke="#6C8FD6" stroke-width="3" />
+          <circle cx="140" cy="260" r="14" fill="#3D6FD6" />
+          <circle cx="140" cy="320" r="10" fill="#D9E6FF" stroke="#6C8FD6" stroke-width="3" />
+          <rect x="180" y="200" width="160" height="10" rx="5" fill="#B9C9E6" />
+          <rect x="180" y="240" width="210" height="10" rx="5" fill="#9FB7E6" />
+          <rect x="180" y="280" width="190" height="10" rx="5" fill="#B9C9E6" />
+        </svg>
+        <p id="empty-state-title">今天还很安静</p>
         <span id="empty-state-detail">输入一条计划后，这里会成为你的轻量清单。</span>
       </section>
 

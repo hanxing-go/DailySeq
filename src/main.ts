@@ -15,6 +15,7 @@ const DRAG_SCROLL_EDGE_SIZE = 42;
 const DRAG_SCROLL_MAX_STEP = 14;
 const TASK_COMPLETION_FEEDBACK_MS = 1200;
 const TASK_LAYOUT_ANIMATION_MS = 620;
+const TASK_DELETE_ANIMATION_MS = 260;
 const LOADING_PLACEHOLDER = "正在读取计划，暂时无法编辑";
 const LOAD_BLOCKED_PLACEHOLDER = "读取失败，暂时无法编辑";
 const REWARD_SPARKS = [
@@ -83,6 +84,7 @@ let data: DailySeqData = createEmptyData();
 let currentPlanScope: PlanScope = "day";
 let viewedDate = startOfLocalDay(new Date());
 let viewedDateKey = toIsoDate(viewedDate);
+let calendarDisplayDate = startOfLocalDay(viewedDate);
 let focusedTaskId: string | null = null;
 let isLoading = true;
 let isSaving = false;
@@ -99,14 +101,20 @@ let recentlyCompletedTaskId: string | null = null;
 let addFeedbackTimer: number | null = null;
 let completeFeedbackTimer: number | null = null;
 let rewardTimer: number | null = null;
+const deletingTaskIds = new Set<string>();
 const allDoneStateByPlan = new Map<string, boolean>();
 
 const noteShellElement = requireElement<HTMLElement>("#app");
 const scopeTabElements = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-plan-scope]"));
 const weekdayElement = requireElement<HTMLElement>("#weekday");
-const dateTitleElement = requireElement<HTMLHeadingElement>("#date-title");
+const dateTitleButtonElement = requireElement<HTMLButtonElement>("#date-title-button");
+const dateTitleElement = requireElement<HTMLElement>("#date-title");
 const todayButtonElement = requireElement<HTMLButtonElement>("#today-button");
-const datePickerElement = requireElement<HTMLInputElement>("#date-picker");
+const datePickerPopoverElement = requireElement<HTMLElement>("#date-picker-popover");
+const calendarMonthLabelElement = requireElement<HTMLElement>("#calendar-month-label");
+const calendarGridElement = requireElement<HTMLElement>("#calendar-grid");
+const calendarPreviousMonthButtonElement = requireElement<HTMLButtonElement>("#calendar-previous-month");
+const calendarNextMonthButtonElement = requireElement<HTMLButtonElement>("#calendar-next-month");
 const previousDayButtonElement = requireElement<HTMLButtonElement>("#previous-day");
 const nextDayButtonElement = requireElement<HTMLButtonElement>("#next-day");
 const hideToTrayButtonElement = requireElement<HTMLButtonElement>("#hide-to-tray");
@@ -204,20 +212,57 @@ nextDayButtonElement.addEventListener("click", () => {
   navigatePlan(1);
 });
 
+dateTitleButtonElement.addEventListener("click", () => {
+  toggleDatePicker();
+});
+
 todayButtonElement.addEventListener("click", () => {
+  hideDatePicker();
   goToToday();
 });
 
-datePickerElement.addEventListener("change", () => {
-  goToPickedDate(datePickerElement.value);
+calendarPreviousMonthButtonElement.addEventListener("click", () => {
+  setCalendarDisplayMonth(-1);
+});
+
+calendarNextMonthButtonElement.addEventListener("click", () => {
+  setCalendarDisplayMonth(1);
+});
+
+calendarGridElement.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const dateButton = target.closest<HTMLButtonElement>("button[data-date]");
+  const dateValue = dateButton?.dataset.date;
+
+  if (!dateButton || dateButton.disabled || !dateValue || !calendarGridElement.contains(dateButton)) {
+    return;
+  }
+
+  hideDatePicker();
+  goToPickedDate(dateValue);
 });
 
 hideToTrayButtonElement.addEventListener("click", () => {
   void hideToTray();
 });
 
+document.addEventListener("pointerdown", (event) => {
+  closeDatePickerFromOutside(event);
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
+
+  if (event.key === "Escape" && isDatePickerOpen()) {
+    event.preventDefault();
+    hideDatePicker({ restoreFocus: true });
     return;
   }
 
@@ -312,6 +357,11 @@ taskListElement.addEventListener("click", (event) => {
   }
 
   const taskId = taskItem.dataset.taskId ?? null;
+
+  if (taskId && deletingTaskIds.has(taskId)) {
+    return;
+  }
+
   focusedTaskId = taskId;
 
   if (target.closest("[data-action='toggle']")) {
@@ -368,7 +418,7 @@ taskListElement.addEventListener("pointerdown", (event) => {
 
   const taskId = taskItem.dataset.taskId ?? null;
 
-  if (!taskId) {
+  if (!taskId || deletingTaskIds.has(taskId)) {
     return;
   }
 
@@ -437,6 +487,10 @@ taskListElement.addEventListener("keydown", (event) => {
 
   const taskId = taskItem.dataset.taskId ?? null;
   const isInteractive = Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
+
+  if (taskId && deletingTaskIds.has(taskId)) {
+    return;
+  }
 
   if (taskId && event.ctrlKey && isPriorityShortcut(event.key)) {
     event.preventDefault();
@@ -569,16 +623,18 @@ async function setTaskImportance(taskId: string, importance: Importance) {
     return;
   }
 
+  const taskLayoutBeforeChange = captureTaskLayout();
   task.importance = importance;
   sortByImportanceAndResequenceTasks(getViewedTasks());
   focusedTaskId = task.id;
   render();
+  animateTaskLayoutFrom(taskLayoutBeforeChange);
   await persist(`已设为${IMPORTANCE_LABELS[importance]}重要性`);
   focusTask(task.id);
 }
 
 async function deleteTask(taskId: string | null) {
-  if (isEditingLocked() || !taskId) {
+  if (isEditingLocked() || !taskId || deletingTaskIds.has(taskId)) {
     return;
   }
 
@@ -596,10 +652,19 @@ async function deleteTask(taskId: string | null) {
   if (recentlyCompletedTaskId === taskId) {
     clearCompletedFeedback();
   }
+
+  const taskLayoutBeforeDelete = captureTaskLayout();
+  deletingTaskIds.add(taskId);
+  hidePriorityFlyout();
+  render();
+  await waitForTaskDeleteExit(taskId);
+
   tasks.splice(index, 1);
+  deletingTaskIds.delete(taskId);
   sortAndResequenceTasks(tasks);
   focusedTaskId = tasks[Math.min(index, tasks.length - 1)]?.id ?? null;
   render();
+  animateTaskLayoutFrom(taskLayoutBeforeDelete);
   const shouldReward = recordAllDoneTransition(wasAllDone);
   const saved = await persist(shouldReward ? "剩下的计划都完成了" : "已删除");
   if (saved && shouldReward) {
@@ -662,6 +727,7 @@ function render() {
 }
 
 function renderTask(task: Task) {
+  const isDeleting = deletingTaskIds.has(task.id);
   const item = document.createElement("li");
   item.className = `task-item${task.done ? " is-done" : ""}`;
   if (task.id === recentlyAddedTaskId) {
@@ -670,10 +736,13 @@ function renderTask(task: Task) {
   if (task.id === recentlyCompletedTaskId) {
     item.classList.add("is-completing");
   }
+  if (isDeleting) {
+    item.classList.add("is-deleting");
+  }
   item.dataset.taskId = task.id;
   item.dataset.importance = task.importance;
-  item.dataset.sortable = String(!isEditingLocked());
-  item.tabIndex = 0;
+  item.dataset.sortable = String(!isEditingLocked() && !isDeleting);
+  item.tabIndex = isDeleting ? -1 : 0;
   item.setAttribute(
     "aria-label",
     `${task.done ? "已完成" : "未完成"}，重要性 ${IMPORTANCE_LABELS[task.importance]}，${task.text}`,
@@ -682,7 +751,7 @@ function renderTask(task: Task) {
   const toggleButton = document.createElement("button");
   toggleButton.className = "task-toggle";
   toggleButton.type = "button";
-  toggleButton.disabled = isEditingLocked();
+  toggleButton.disabled = isEditingLocked() || isDeleting;
   toggleButton.dataset.action = "toggle";
   toggleButton.setAttribute(
     "aria-label",
@@ -702,7 +771,7 @@ function renderTask(task: Task) {
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
   deleteButton.type = "button";
-  deleteButton.disabled = isEditingLocked();
+  deleteButton.disabled = isEditingLocked() || isDeleting;
   deleteButton.dataset.action = "delete";
   deleteButton.setAttribute("aria-label", `删除任务：${task.text}`);
   deleteButton.textContent = "×";
@@ -727,6 +796,72 @@ function navigatePlan(offset: number) {
   setViewedDate(addPlanOffset(viewedDate, currentPlanScope, offset));
 }
 
+function toggleDatePicker() {
+  if (isLoading) {
+    return;
+  }
+
+  if (isDatePickerOpen()) {
+    hideDatePicker();
+    return;
+  }
+
+  showDatePicker();
+}
+
+function showDatePicker() {
+  calendarDisplayDate = startOfLocalDay(viewedDate);
+  renderDatePicker();
+  datePickerPopoverElement.hidden = false;
+  datePickerPopoverElement.dataset.visible = "true";
+  dateTitleButtonElement.setAttribute("aria-expanded", "true");
+}
+
+function hideDatePicker(options: { restoreFocus?: boolean } = {}) {
+  if (!isDatePickerOpen()) {
+    return;
+  }
+
+  datePickerPopoverElement.hidden = true;
+  delete datePickerPopoverElement.dataset.visible;
+  dateTitleButtonElement.setAttribute("aria-expanded", "false");
+
+  if (options.restoreFocus === true) {
+    dateTitleButtonElement.focus();
+  }
+}
+
+function isDatePickerOpen() {
+  return !datePickerPopoverElement.hidden;
+}
+
+function closeDatePickerFromOutside(event: PointerEvent) {
+  if (!isDatePickerOpen()) {
+    return;
+  }
+
+  const target = event.target;
+
+  if (!(target instanceof Node)) {
+    return;
+  }
+
+  if (datePickerPopoverElement.contains(target) || dateTitleButtonElement.contains(target)) {
+    return;
+  }
+
+  hideDatePicker();
+}
+
+function setCalendarDisplayMonth(monthOffset: number) {
+  if (isLoading) {
+    return;
+  }
+
+  calendarDisplayDate = addMonths(calendarDisplayDate, monthOffset);
+  renderDatePicker();
+}
+
 function goToToday() {
   if (isLoading || isSaving) {
     return;
@@ -743,7 +878,6 @@ function goToPickedDate(value: string) {
   const pickedDate = parseIsoDateInput(value);
 
   if (!pickedDate) {
-    datePickerElement.value = viewedDateKey;
     return;
   }
 
@@ -753,6 +887,7 @@ function goToPickedDate(value: string) {
 function setViewedDate(date: Date) {
   viewedDate = startOfLocalDay(date);
   viewedDateKey = toIsoDate(viewedDate);
+  calendarDisplayDate = startOfLocalDay(viewedDate);
   focusedTaskId = null;
   if (!isLoadBlocked) {
     setStatus("");
@@ -850,27 +985,70 @@ function renderDateHeader() {
   previousDayButtonElement.title = getNavigationLabel(-1);
   nextDayButtonElement.setAttribute("aria-label", getNavigationLabel(1));
   nextDayButtonElement.title = getNavigationLabel(1);
-  todayButtonElement.disabled = isLoading || getDayOffset(viewedDate) === 0;
-  todayButtonElement.title = currentPlanScope === "day" ? "回到今天" : "回到今天所在计划";
-  todayButtonElement.setAttribute("aria-label", todayButtonElement.title);
-  datePickerElement.value = viewedDateKey;
+  todayButtonElement.hidden = isViewingCurrentPlan();
+  todayButtonElement.disabled = isLoading;
+  todayButtonElement.removeAttribute("title");
+  todayButtonElement.setAttribute("aria-label", currentPlanScope === "day" ? "回到今天" : "回到今天所在计划");
+  dateTitleButtonElement.disabled = isLoading;
+  dateTitleButtonElement.title = "选择日期";
+  dateTitleButtonElement.setAttribute("aria-label", `${formatReadableViewedDate()}，选择日期`);
 
   if (currentPlanScope === "week") {
     weekdayElement.textContent = formatWeekRange(viewedDate);
     dateTitleElement.textContent = `${formatShortViewedDate()}计划`;
+    renderDatePicker();
     return;
   }
 
   if (currentPlanScope === "month") {
     weekdayElement.textContent = formatShortViewedDate();
     dateTitleElement.textContent = formatMonthLabel(viewedDate);
+    renderDatePicker();
     return;
   }
 
   const relativeLabel = getRelativeDateLabel(viewedDate);
 
   weekdayElement.textContent = relativeLabel ? `${relativeLabel} · ${formatWeekday(viewedDate)}` : formatWeekday(viewedDate);
-  dateTitleElement.textContent = formatCalendarDate(viewedDate);
+  dateTitleElement.textContent = formatDayTitle(viewedDate);
+  renderDatePicker();
+}
+
+function renderDatePicker() {
+  const monthStart = new Date(calendarDisplayDate.getFullYear(), calendarDisplayDate.getMonth(), 1);
+  const leadingDays = getCalendarLeadingDays(monthStart);
+  const today = startOfLocalDay(new Date());
+  const selectedDateKey = viewedDateKey;
+
+  calendarMonthLabelElement.textContent = formatMonthLabel(calendarDisplayDate);
+  calendarPreviousMonthButtonElement.disabled = isLoading;
+  calendarNextMonthButtonElement.disabled = isLoading;
+  calendarGridElement.replaceChildren();
+
+  for (let index = 0; index < 42; index += 1) {
+    const date = addDays(monthStart, index - leadingDays);
+    const dateKey = toIsoDate(date);
+    const dayButton = document.createElement("button");
+    const isSelected = dateKey === selectedDateKey;
+    const isToday = isSameLocalDay(date, today);
+    const isOutsideMonth = date.getMonth() !== calendarDisplayDate.getMonth();
+
+    dayButton.type = "button";
+    dayButton.className = "calendar-day";
+    dayButton.dataset.date = dateKey;
+    dayButton.textContent = String(date.getDate());
+    dayButton.disabled = isLoading;
+    dayButton.classList.toggle("is-selected", isSelected);
+    dayButton.classList.toggle("is-today", isToday);
+    dayButton.classList.toggle("is-outside-month", isOutsideMonth);
+    dayButton.setAttribute("aria-label", formatCalendarDayLabel(date));
+    dayButton.setAttribute("aria-pressed", String(isSelected));
+    if (isToday) {
+      dayButton.setAttribute("aria-current", "date");
+    }
+
+    calendarGridElement.append(dayButton);
+  }
 }
 
 function renderEmptyState() {
@@ -887,26 +1065,26 @@ function renderEmptyState() {
   const dayOffset = getDayOffset(viewedDate);
 
   if (isLoadBlocked) {
-    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑`;
     emptyStateDetailElement.textContent = "读取失败后，DailySeq 不会保存新内容。";
     emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
     return;
   }
 
   if (dayOffset === 0) {
-    emptyStateTitleElement.textContent = "今天还很安静。";
+    emptyStateTitleElement.textContent = "今天还很安静";
     emptyStateDetailElement.textContent = "输入一条计划后，这里会成为你的轻量清单。";
   } else if (dayOffset === 1) {
-    emptyStateTitleElement.textContent = "明天还没有安排。";
+    emptyStateTitleElement.textContent = "明天还没有安排";
     emptyStateDetailElement.textContent = "可以先放下一条轻量计划。";
   } else if (dayOffset === -1) {
-    emptyStateTitleElement.textContent = "昨天没有留下计划。";
+    emptyStateTitleElement.textContent = "昨天没有留下计划";
     emptyStateDetailElement.textContent = "需要回看或补记时，可以在这里添加。";
   } else if (dayOffset > 0) {
-    emptyStateTitleElement.textContent = "这一天还没有安排。";
+    emptyStateTitleElement.textContent = "这一天还没有安排";
     emptyStateDetailElement.textContent = "提前写下要做的事，到了当天就不用重新想。";
   } else {
-    emptyStateTitleElement.textContent = "这一天没有留下计划。";
+    emptyStateTitleElement.textContent = "这一天没有留下计划";
     emptyStateDetailElement.textContent = "需要回看或补记时，可以在这里添加。";
   }
 
@@ -915,17 +1093,17 @@ function renderEmptyState() {
 
 function renderScopedEmptyState(scope: Exclude<PlanScope, "day">) {
   if (isLoadBlocked) {
-    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑。`;
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}暂时无法编辑`;
     emptyStateDetailElement.textContent = "读取失败后，DailySeq 不会保存新内容。";
     emptyStateElement.setAttribute("aria-label", `${formatReadableViewedDate()}的空计划`);
     return;
   }
 
   if (scope === "week") {
-    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排。`;
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排`;
     emptyStateDetailElement.textContent = "写下这一周要推进的计划，周计划会单独保存。";
   } else {
-    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排。`;
+    emptyStateTitleElement.textContent = `${formatShortViewedDate()}还没有安排`;
     emptyStateDetailElement.textContent = "写下这个月要推进的计划，月计划会单独保存。";
   }
 
@@ -946,6 +1124,9 @@ function updateBusyState() {
   addTaskButtonElement.disabled = locked;
   previousDayButtonElement.disabled = navigationLocked;
   nextDayButtonElement.disabled = navigationLocked;
+  dateTitleButtonElement.disabled = navigationLocked;
+  calendarPreviousMonthButtonElement.disabled = navigationLocked;
+  calendarNextMonthButtonElement.disabled = navigationLocked;
   composerElement.toggleAttribute("aria-disabled", locked);
   taskListElement.toggleAttribute("aria-busy", isLoading || isSaving);
   taskListElement.setAttribute("aria-disabled", String(locked));
@@ -953,6 +1134,10 @@ function updateBusyState() {
 
   if (locked) {
     hidePriorityFlyout();
+  }
+
+  if (navigationLocked) {
+    hideDatePicker();
   }
 }
 
@@ -1454,6 +1639,28 @@ function getMonthOffset(date: Date) {
   return (date.getFullYear() - today.getFullYear()) * 12 + date.getMonth() - today.getMonth();
 }
 
+function isViewingCurrentPlan() {
+  if (currentPlanScope === "week") {
+    return getWeekOffset(viewedDate) === 0;
+  }
+
+  if (currentPlanScope === "month") {
+    return getMonthOffset(viewedDate) === 0;
+  }
+
+  return getDayOffset(viewedDate) === 0;
+}
+
+function isSameLocalDay(firstDate: Date, secondDate: Date) {
+  return toIsoDate(firstDate) === toIsoDate(secondDate);
+}
+
+function getCalendarLeadingDays(date: Date) {
+  const day = date.getDay();
+
+  return day === 0 ? 6 : day - 1;
+}
+
 function getRelativeDateLabel(date: Date) {
   const dayOffset = getDayOffset(date);
 
@@ -1484,6 +1691,17 @@ function formatCalendarDate(date: Date) {
   return `${month}月${day}日`;
 }
 
+function formatDayTitle(date: Date) {
+  return `${formatCalendarDate(date)} ${formatCompactWeekday(date)}`;
+}
+
+function formatCalendarDayLabel(date: Date) {
+  const relativeLabel = getRelativeDateLabel(date);
+  const dateLabel = `${formatCalendarDate(date)} ${formatWeekday(date)}`;
+
+  return relativeLabel ? `${relativeLabel}，${dateLabel}` : dateLabel;
+}
+
 function formatWeekRangeDate(date: Date, includeYear: boolean) {
   const year = includeYear ? `${date.getFullYear()}年` : "";
 
@@ -1493,6 +1711,12 @@ function formatWeekRangeDate(date: Date, includeYear: boolean) {
 function formatWeekday(date: Date) {
   return new Intl.DateTimeFormat(LOCALE, {
     weekday: "long",
+  }).format(date);
+}
+
+function formatCompactWeekday(date: Date) {
+  return new Intl.DateTimeFormat(LOCALE, {
+    weekday: "short",
   }).format(date);
 }
 
@@ -1640,6 +1864,40 @@ function focusTask(taskId: string) {
 
   requestAnimationFrame(() => {
     taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`)?.focus();
+  });
+}
+
+function waitForTaskDeleteExit(taskId: string) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return Promise.resolve();
+  }
+
+  const taskItem = taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
+
+  if (!taskItem) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    let resolved = false;
+    const finish = () => {
+      if (resolved) {
+        return;
+      }
+
+      resolved = true;
+      taskItem.removeEventListener("animationend", handleAnimationEnd);
+      window.clearTimeout(timeoutId);
+      resolve();
+    };
+    const handleAnimationEnd = (event: AnimationEvent) => {
+      if (event.target === taskItem && event.animationName === "task-delete-exit") {
+        finish();
+      }
+    };
+    const timeoutId = window.setTimeout(finish, TASK_DELETE_ANIMATION_MS + 90);
+
+    taskItem.addEventListener("animationend", handleAnimationEnd);
   });
 }
 
@@ -1888,7 +2146,7 @@ function isInteractiveTaskTarget(target: Element) {
 }
 
 function canStartWindowDrag(event: PointerEvent) {
-  if (event.button !== 0) {
+  if (event.button !== 0 || isDatePickerOpen()) {
     return false;
   }
 
@@ -1916,6 +2174,7 @@ function isWindowDragBlockedTarget(target: Element) {
         "#task-list",
         ".top-bar",
         ".composer",
+        ".date-picker-popover",
         ".priority-flyout",
       ].join(", "),
     ),
