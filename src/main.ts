@@ -15,6 +15,7 @@ const WEEK_IN_MS = 7 * DAY_IN_MS;
 const DRAG_START_THRESHOLD = 6;
 const DRAG_SCROLL_EDGE_SIZE = 42;
 const DRAG_SCROLL_MAX_STEP = 14;
+const TASK_TEXT_MAX_LENGTH = 160;
 const TASK_COMPLETION_FEEDBACK_MS = 1200;
 const TASK_LAYOUT_ANIMATION_MS = 620;
 const TASK_DELETE_ANIMATION_MS = 260;
@@ -103,6 +104,7 @@ let taskDragCandidate: TaskDragCandidate | null = null;
 let taskDragState: TaskDragState | null = null;
 let suppressNextTaskClick = false;
 let dragScrollFrame = 0;
+let editingTaskId: string | null = null;
 let recentlyAddedTaskId: string | null = null;
 let recentlyCompletedTaskId: string | null = null;
 let addFeedbackTimer: number | null = null;
@@ -342,6 +344,11 @@ taskListElement.addEventListener("pointerover", (event) => {
     return;
   }
 
+  if (taskItem.dataset.taskId === editingTaskId) {
+    hidePriorityFlyout();
+    return;
+  }
+
   showPriorityFlyoutForTask(taskItem);
 });
 
@@ -419,6 +426,29 @@ taskListElement.addEventListener("click", (event) => {
   }
 });
 
+taskListElement.addEventListener("dblclick", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element) || isEditingLocked()) {
+    return;
+  }
+
+  const taskItem = target.closest<HTMLElement>("[data-task-id]");
+
+  if (!taskItem || isInteractiveTaskTarget(target)) {
+    return;
+  }
+
+  const taskId = taskItem.dataset.taskId ?? null;
+
+  if (!taskId || deletingTaskIds.has(taskId)) {
+    return;
+  }
+
+  event.preventDefault();
+  beginTaskTextEdit(taskId);
+});
+
 taskListElement.addEventListener("focusin", (event) => {
   const target = event.target;
 
@@ -429,8 +459,10 @@ taskListElement.addEventListener("focusin", (event) => {
   const taskItem = target.closest<HTMLElement>("[data-task-id]");
   focusedTaskId = taskItem?.dataset.taskId ?? null;
 
-  if (taskItem) {
+  if (taskItem && taskItem.dataset.taskId !== editingTaskId) {
     showPriorityFlyoutForTask(taskItem);
+  } else {
+    hidePriorityFlyout();
   }
 });
 
@@ -451,7 +483,7 @@ taskListElement.addEventListener("pointerdown", (event) => {
     return;
   }
 
-  if (event.button !== 0 || isEditingLocked()) {
+  if (event.button !== 0 || isEditingLocked() || editingTaskId) {
     return;
   }
 
@@ -532,8 +564,13 @@ taskListElement.addEventListener("keydown", (event) => {
 
   const taskId = taskItem.dataset.taskId ?? null;
   const isInteractive = Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
+  const isTaskEditInput = Boolean(target.closest("[data-task-edit='true']"));
 
   if (taskId && deletingTaskIds.has(taskId)) {
+    return;
+  }
+
+  if (isTaskEditInput) {
     return;
   }
 
@@ -699,18 +736,18 @@ async function deleteTask(taskId: string | null) {
     clearCompletedFeedback();
   }
 
-  const taskLayoutBeforeDelete = captureTaskLayout();
   deletingTaskIds.add(taskId);
   hidePriorityFlyout();
   render();
   await waitForTaskDeleteExit(taskId);
 
+  const taskLayoutAfterDeleteExit = captureTaskLayout();
   tasks.splice(index, 1);
   deletingTaskIds.delete(taskId);
   sortAndResequenceTasks(tasks);
   focusedTaskId = tasks[Math.min(index, tasks.length - 1)]?.id ?? null;
   render();
-  animateTaskLayoutFrom(taskLayoutBeforeDelete);
+  animateTaskLayoutFrom(taskLayoutAfterDeleteExit);
   const shouldReward = recordAllDoneTransition(wasAllDone);
   const saved = await persist(shouldReward ? "剩下的计划都完成了" : "已删除");
   if (saved && shouldReward) {
@@ -722,6 +759,68 @@ async function deleteTask(taskId: string | null) {
   } else {
     taskInputElement.focus();
   }
+}
+
+function beginTaskTextEdit(taskId: string) {
+  if (isEditingLocked() || deletingTaskIds.has(taskId)) {
+    return;
+  }
+
+  const task = findTask(taskId);
+
+  if (!task) {
+    return;
+  }
+
+  clearDragState();
+  editingTaskId = task.id;
+  focusedTaskId = task.id;
+  hidePriorityFlyout();
+  render();
+
+  const editInput = getTaskEditInput(task.id);
+  editInput?.focus();
+  editInput?.select();
+}
+
+function cancelTaskTextEdit(taskId: string) {
+  if (editingTaskId !== taskId) {
+    return;
+  }
+
+  editingTaskId = null;
+  focusedTaskId = taskId;
+  render();
+  focusTask(taskId);
+}
+
+async function finishTaskTextEdit(taskId: string, value: string) {
+  if (editingTaskId !== taskId) {
+    return;
+  }
+
+  const task = findTask(taskId);
+
+  if (!task) {
+    editingTaskId = null;
+    render();
+    return;
+  }
+
+  const text = value.trim().slice(0, TASK_TEXT_MAX_LENGTH);
+  editingTaskId = null;
+  focusedTaskId = task.id;
+
+  if (!text || text === task.text) {
+    render();
+    focusTask(task.id);
+    return;
+  }
+
+  task.text = text;
+  render();
+  await persist("已修改");
+  focusTask(task.id);
 }
 
 async function persist(successMessage: string, options: { rerender?: boolean } = {}) {
@@ -930,8 +1029,12 @@ function getSelectedThemeButton() {
 
 function renderTask(task: Task) {
   const isDeleting = deletingTaskIds.has(task.id);
+  const isEditing = editingTaskId === task.id && !isDeleting;
   const item = document.createElement("li");
   item.className = `task-item${task.done ? " is-done" : ""}`;
+  if (isEditing) {
+    item.classList.add("is-editing");
+  }
   if (task.id === recentlyAddedTaskId) {
     item.classList.add("is-new");
   }
@@ -943,7 +1046,7 @@ function renderTask(task: Task) {
   }
   item.dataset.taskId = task.id;
   item.dataset.importance = task.importance;
-  item.dataset.sortable = String(!isEditingLocked() && !isDeleting);
+  item.dataset.sortable = String(!isEditingLocked() && !isDeleting && !isEditing);
   item.tabIndex = isDeleting ? -1 : 0;
   item.setAttribute(
     "aria-label",
@@ -964,11 +1067,42 @@ function renderTask(task: Task) {
   const content = document.createElement("div");
   content.className = "task-content";
 
-  const textElement = document.createElement("span");
-  textElement.className = "task-text";
-  textElement.textContent = task.text;
+  if (isEditing) {
+    const editInput = document.createElement("input");
+    editInput.className = "task-edit-input";
+    editInput.type = "text";
+    editInput.value = task.text;
+    editInput.maxLength = TASK_TEXT_MAX_LENGTH;
+    editInput.dataset.taskEdit = "true";
+    editInput.setAttribute("aria-label", `修改任务：${task.text}`);
+    editInput.addEventListener("keydown", (event) => {
+      if (event.isComposing) {
+        return;
+      }
 
-  content.append(textElement);
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void finishTaskTextEdit(task.id, editInput.value);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelTaskTextEdit(task.id);
+      }
+    });
+    editInput.addEventListener("blur", () => {
+      void finishTaskTextEdit(task.id, editInput.value);
+    });
+
+    content.append(editInput);
+  } else {
+    const textElement = document.createElement("span");
+    textElement.className = "task-text";
+    textElement.textContent = task.text;
+
+    content.append(textElement);
+  }
 
   const deleteButton = document.createElement("button");
   deleteButton.className = "task-delete";
@@ -1092,6 +1226,7 @@ function setViewedDate(date: Date) {
   viewedDateKey = toIsoDate(viewedDate);
   calendarDisplayDate = startOfLocalDay(viewedDate);
   focusedTaskId = null;
+  editingTaskId = null;
   if (!isLoadBlocked) {
     setStatus("");
   }
@@ -1109,6 +1244,7 @@ function switchPlanScope(scope: PlanScope) {
 
   currentPlanScope = scope;
   focusedTaskId = null;
+  editingTaskId = null;
   if (!isLoadBlocked) {
     setStatus("");
   }
@@ -2470,6 +2606,12 @@ function clearPriorityFlyoutHideTimer() {
 
 function getTaskItem(taskId: string) {
   return taskListElement.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
+}
+
+function getTaskEditInput(taskId: string) {
+  return taskListElement.querySelector<HTMLInputElement>(
+    `[data-task-id="${CSS.escape(taskId)}"] [data-task-edit="true"]`,
+  );
 }
 
 function isImportance(value: string | undefined): value is Importance {

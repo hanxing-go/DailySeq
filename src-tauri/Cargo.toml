@@ -1,6 +1,6 @@
 [package]
 name = "dailyseq"
-version = "0.1.0"
+version = "1.0.0"
 description = "A lightweight desktop sticky-note planner."
 authors = ["DailySeq contributors"]
 edition = "2021"
